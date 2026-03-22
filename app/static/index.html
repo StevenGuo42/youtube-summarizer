@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Summarizer</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <main class="container">
+        <nav>
+            <ul>
+                <li><strong>YouTube Summarizer</strong></li>
+            </ul>
+            <ul>
+                <li><a href="#browse" class="tab active" data-tab="browse">Browse</a></li>
+                <li><a href="#queue" class="tab" data-tab="queue">Queue</a></li>
+                <li><a href="#summaries" class="tab" data-tab="summaries">Summaries</a></li>
+                <li><a href="#settings" class="tab" data-tab="settings">Settings</a></li>
+            </ul>
+        </nav>
+
+        <section id="browse"></section>
+        <section id="queue" hidden></section>
+        <section id="summaries" hidden></section>
+        <section id="settings" hidden></section>
+    </main>
+    <script src="/app.js"></script>
+</body>
+</html>

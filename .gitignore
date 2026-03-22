@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+.claude/
+.python-version
+data/
+docs/module_design/
+logs/
+.pytest_cache/
