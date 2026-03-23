@@ -1,10 +1,23 @@
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from app.routers import auth, browse, queue, summaries, settings
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
-app = FastAPI(title="YouTube Summarizer")
+from app.database import init_db
+from app.queue.worker import start_worker, stop_worker
+from app.routers import auth, browse, queue, settings, summaries
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    await start_worker()
+    yield
+    await stop_worker()
+
+
+app = FastAPI(title="YouTube Summarizer", lifespan=lifespan)
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(browse.router, prefix="/api", tags=["browse"])

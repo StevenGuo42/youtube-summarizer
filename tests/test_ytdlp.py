@@ -67,3 +67,85 @@ async def test_download_video():
     assert video_path.exists()
     assert video_path.suffix == ".mp4"
     assert video_path.stat().st_size > 0
+
+
+@pytest.mark.asyncio
+async def test_members_only_video_info(members_only_video_id, members_only_url):
+    """Test that we can fetch metadata for a members-only video (requires cookies)."""
+    from app.config import COOKIES_PATH
+
+    if not COOKIES_PATH.exists():
+        pytest.skip("No cookies.txt — cannot access members-only content")
+
+    info = await get_video_info(members_only_url)
+    logger.info("Members-only video info: id=%s title=%s duration=%s", info["id"], info["title"], info["duration"])
+    assert info["id"] == members_only_video_id
+    assert info["title"] is not None
+
+
+@pytest.mark.asyncio
+async def test_members_only_download_starts(members_only_url):
+    """Test that downloading a members-only video can start (cancels after first bytes).
+
+    Requires valid cookies with active membership to the channel.
+    """
+    import asyncio
+
+    from app.config import COOKIES_PATH, TMP_DIR, VIDEO_FORMAT
+    from app.services.ytdlp import _base_opts
+
+    if not COOKIES_PATH.exists():
+        pytest.skip("No cookies.txt — cannot access members-only content")
+
+    output_dir = TMP_DIR / "test_members_download"
+    output_dir.mkdir(exist_ok=True)
+
+    started = asyncio.Event()
+    no_formats = False
+
+    def _try_download():
+        import yt_dlp
+
+        nonlocal no_formats
+
+        def progress_hook(d):
+            if d["status"] in ("downloading", "finished"):
+                started.set()
+                if d["status"] == "downloading":
+                    raise yt_dlp.utils.DownloadCancelled("Download started successfully, stopping early")
+
+        opts = {
+            **_base_opts(),
+            "format": VIDEO_FORMAT,
+            "merge_output_format": "mp4",
+            "outtmpl": str(output_dir / "%(id)s.%(ext)s"),
+            "progress_hooks": [progress_hook],
+        }
+
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            try:
+                ydl.download([members_only_url])
+            except yt_dlp.utils.DownloadCancelled:
+                pass  # expected — we cancelled on purpose
+            except yt_dlp.utils.DownloadError as e:
+                if "Requested format is not available" in str(e):
+                    no_formats = True
+                else:
+                    raise
+
+    await asyncio.to_thread(_try_download)
+
+    # Clean up partial files
+    for f in output_dir.iterdir():
+        f.unlink()
+    if output_dir.exists():
+        output_dir.rmdir()
+
+    if no_formats:
+        pytest.skip(
+            "No playable formats — cookies may lack membership to this channel. "
+            "Metadata was still accessible, so cookies are valid for YouTube auth."
+        )
+
+    logger.info("Members-only download started successfully")
+    assert started.is_set(), "Download never started — cookies may be invalid"

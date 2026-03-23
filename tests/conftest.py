@@ -1,11 +1,38 @@
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 LOGS_DIR = Path("logs/tests")
 _active_handlers: dict[str, logging.FileHandler] = {}
+
+_TEST_CONFIG_PATH = Path(__file__).parent / "test_config.json"
+
+
+def _load_test_config() -> dict:
+    if _TEST_CONFIG_PATH.exists():
+        return json.loads(_TEST_CONFIG_PATH.read_text())
+    return {}
+
+
+@pytest.fixture
+def members_only_video_id():
+    """Members-only video ID from test_config.json."""
+    config = _load_test_config()
+    vid = config.get("members_only_video_id")
+    if not vid:
+        pytest.skip("members_only_video_id not set in tests/test_config.json")
+    return vid
+
+
+@pytest.fixture
+def members_only_url(members_only_video_id):
+    """Full YouTube URL for the members-only video."""
+    return f"https://www.youtube.com/watch?v={members_only_video_id}"
 
 
 def pytest_configure(config):

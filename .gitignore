@@ -7,3 +7,4 @@ data/
 docs/module_design/
 logs/
 .pytest_cache/
+tests/test_config.json

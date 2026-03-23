@@ -1,17 +1,40 @@
 import asyncio
 import json
+import shutil
+import tempfile
 from pathlib import Path
 
 from app.config import COOKIES_PATH, VIDEO_FORMAT
+
+# yt-dlp modifies cookiefile in place (writes back rotated cookies from YouTube).
+# Use a temp copy so the original stays untouched.
+_tmp_cookies: Path | None = None
+
+
+def _get_tmp_cookies() -> str | None:
+    """Copy cookies to a temp file on first use. Returns temp path or None."""
+    global _tmp_cookies
+    if not COOKIES_PATH.exists():
+        return None
+    if _tmp_cookies and _tmp_cookies.exists():
+        return str(_tmp_cookies)
+    fd, path = tempfile.mkstemp(suffix=".txt", prefix="yt_cookies_")
+    import os
+    os.close(fd)
+    _tmp_cookies = Path(path)
+    shutil.copy2(COOKIES_PATH, _tmp_cookies)
+    return str(_tmp_cookies)
 
 
 def _base_opts() -> dict:
     opts = {
         "quiet": True,
         "no_warnings": True,
+        "js_runtimes": {"node": {"enabled": True}},
     }
-    if COOKIES_PATH.exists():
-        opts["cookiefile"] = str(COOKIES_PATH)
+    cookies = _get_tmp_cookies()
+    if cookies:
+        opts["cookiefile"] = cookies
     return opts
 
 
@@ -42,6 +65,7 @@ async def get_video_info(url: str) -> dict:
     opts = {
         **_base_opts(),
         "skip_download": True,
+        "ignore_no_formats_error": True,
     }
 
     def _fetch():

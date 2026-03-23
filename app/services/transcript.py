@@ -7,6 +7,7 @@ from pathlib import Path
 import torch
 
 from app.config import COOKIES_PATH, WHISPER_MODEL_DIR
+from app.services.ytdlp import _base_opts
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +45,7 @@ async def extract_transcript(
 async def _try_captions(video_id: str, work_dir: Path) -> TranscriptResult | None:
     """Try to get YouTube captions via yt-dlp."""
     opts = {
-        "quiet": True,
-        "no_warnings": True,
+        **_base_opts(),
         "writesubtitles": True,
         "writeautomaticsub": True,
         "subtitleslangs": ["en"],
@@ -53,8 +53,6 @@ async def _try_captions(video_id: str, work_dir: Path) -> TranscriptResult | Non
         "skip_download": True,
         "outtmpl": str(work_dir / "%(id)s"),
     }
-    if COOKIES_PATH.exists():
-        opts["cookiefile"] = str(COOKIES_PATH)
 
     def _fetch():
         import yt_dlp
