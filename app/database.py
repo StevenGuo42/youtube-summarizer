@@ -36,9 +36,10 @@ async def init_db():
 
             CREATE TABLE IF NOT EXISTS llm_settings (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
-                provider TEXT,
-                model TEXT,
+                provider TEXT DEFAULT 'anthropic',
+                model TEXT DEFAULT 'claude-sonnet-4-20250514',
                 api_key TEXT,
-                api_base_url TEXT
+                api_base_url TEXT,
+                custom_prompt TEXT
             );
         """)

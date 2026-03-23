@@ -8,7 +8,7 @@ YouTube Video Summarizer — self-hosted web app that summarizes YouTube videos 
 
 ## Tech Stack
 
-Python 3.14 + uv, FastAPI + uvicorn, vanilla HTML/JS + Pico CSS, SQLite (aiosqlite), yt-dlp, ffmpeg, multi-provider LLM (Anthropic/OpenAI/Google/Ollama).
+Python 3.14 + uv, FastAPI + uvicorn, vanilla HTML/JS + Pico CSS, SQLite (aiosqlite), yt-dlp (+yt-dlp-ejs), ffmpeg, Claude Agent SDK (LLM). Node.js required (via nvm) for yt-dlp YouTube JS challenge solving.
 
 ## Commands
 
@@ -33,6 +33,10 @@ Tests use **pytest** + **pytest-asyncio**. Tests that hit real YouTube require n
 **Frontend (`app/static/`):** Single-page app, Pico CSS, semantic HTML, dark theme default.
 
 **Data:** SQLite + cookies + settings in `data/`. Temp files in `data/tmp/<job_id>/`, cleaned per-job. API keys never exposed back to frontend.
+
+**LLM:** Claude-only via `claude-agent-sdk`. Auth via OAuth (Claude Max plan, `claude auth login`). Bundled CLI is a native binary — no Node.js needed for the SDK. Custom prompts supported.
+
+**yt-dlp:** Requires `yt-dlp-ejs` + Node.js runtime for YouTube JS challenge solving. `_base_opts()` centralizes shared config (cookies, JS runtime). `app/config.py` auto-adds nvm Node.js to PATH. All yt-dlp consumers (ytdlp, transcript) must use `_base_opts()`.
 
 **Error handling:** Pipeline steps fail independently — partial results are still saved.
 

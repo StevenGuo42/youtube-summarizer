@@ -1,4 +1,11 @@
+import os
 from pathlib import Path
+
+# Ensure nvm-managed Node.js is on PATH (needed by yt-dlp EJS challenge solver)
+_nvm_dir = Path(os.environ.get("NVM_DIR", Path.home() / ".nvm"))
+_nvm_node_bins = sorted(_nvm_dir.glob("versions/node/*/bin"), reverse=True)
+if _nvm_node_bins and str(_nvm_node_bins[0]) not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = f"{_nvm_node_bins[0]}:{os.environ.get('PATH', '')}"
 
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
