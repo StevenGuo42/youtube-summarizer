@@ -94,6 +94,27 @@ def _run_ocr(keyframes: list[KeyFrame]) -> list[OcrResult]:
             torch.cuda.empty_cache()
 
 
+def save_ocr_results(ocr_results: list[OcrResult], work_dir: Path) -> list[Path | None]:
+    """Write OCR results to text files for Claude to read via Read tool.
+
+    Returns list parallel to input: Path for results with text, None for empty.
+    """
+    ocr_dir = work_dir / "ocr"
+    ocr_dir.mkdir(exist_ok=True)
+
+    paths: list[Path | None] = []
+    for i, result in enumerate(ocr_results):
+        if not result.text:
+            paths.append(None)
+            continue
+        path = ocr_dir / f"frame_{i:04d}_ocr.txt"
+        path.write_text(result.text, encoding="utf-8")
+        paths.append(path)
+
+    logger.info("Saved %d/%d OCR results to %s", sum(1 for p in paths if p), len(paths), ocr_dir)
+    return paths
+
+
 async def extract_text(keyframes: list[KeyFrame]) -> list[OcrResult]:
     """Run OCR on keyframe images using chandra-ocr-2."""
     if not keyframes:
