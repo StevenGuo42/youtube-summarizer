@@ -20,6 +20,10 @@ VIDEO_FORMAT = "bestvideo[height<=720]+bestaudio/best[height<=720]/best"
 
 WHISPER_MODEL_DIR = DATA_DIR / "whisper_models"
 
+OCR_MODEL_DIR = DATA_DIR / "ocr_models"
+OCR_MODEL_NAME = "datalab-to/chandra-ocr-2"
+OCR_PROMPT_TYPE = "ocr"
+
 MAX_KEYFRAMES = 30
 KEYFRAME_MAX_DIMENSION = 1024
 SCENE_CHANGE_THRESHOLD = 0.3

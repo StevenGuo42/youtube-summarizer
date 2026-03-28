@@ -3,7 +3,10 @@ __pycache__/
 .venv/
 .claude/
 .python-version
-data/
+data/*
+!data/test/
+data/test/*
+!data/test/funsd_82092117.png
 docs/module_design/
 logs/
 .pytest_cache/
