@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -88,6 +89,7 @@ def _run_ocr(keyframes: list[KeyFrame]) -> list[OcrResult]:
         return results
     finally:
         del model
+        gc.collect()
         if gpu:
             torch.cuda.empty_cache()
 
