@@ -8,7 +8,9 @@ YouTube Video Summarizer — self-hosted web app that summarizes YouTube videos 
 
 ## Tech Stack
 
-Python 3.14 + uv, FastAPI + uvicorn, vanilla HTML/JS + Pico CSS, SQLite (aiosqlite), yt-dlp (+yt-dlp-ejs), ffmpeg, Claude Agent SDK (LLM). Node.js required (via nvm) for yt-dlp YouTube JS challenge solving.
+Python 3.14 + uv, FastAPI + uvicorn, vanilla HTML/JS + Pico CSS, SQLite (aiosqlite), yt-dlp (+yt-dlp-ejs), ffmpeg, Claude Agent SDK (LLM). Node.js required (via nvm) for yt-dlp YouTube JS challenge solving. NVIDIA RTX 5060 (8GB VRAM) — be careful with VRAM usage.
+
+Always use  `uv` to install libraries. 
 
 ## Commands
 
@@ -26,9 +28,11 @@ Tests use **pytest** + **pytest-asyncio**. Tests that hit real YouTube require n
 
 ## Architecture
 
-**Pipeline:** Download (yt-dlp) → Transcript (captions/Whisper) → Keyframes (ffmpeg) → Summarize (LLM) → Cleanup. One job at a time via async task queue.
+For any functionality changes, /docs/module_design must be updated first. 
 
-**Backend (`app/`):** `main.py` (FastAPI app), `config.py`, `database.py`, `routers/` (auth, browse, queue, summaries, settings), `services/` (ytdlp, transcript, keyframes, llm, pipeline), `queue/worker.py`.
+**Pipeline:** Download (yt-dlp) → Transcript (captions/Whisper) → Keyframes (ffmpeg) → OCR (chandra) → Summarize (LLM) → Cleanup. One job at a time via async task queue.
+
+**Backend (`app/`):** `main.py` (FastAPI app), `config.py`, `database.py`, `routers/` (auth, browse, queue, summaries, settings), `services/` (ytdlp, transcript, keyframes, ocr, llm, pipeline), `queue/worker.py`.
 
 **Frontend (`app/static/`):** Single-page app, Pico CSS, semantic HTML, dark theme default.
 
@@ -37,6 +41,10 @@ Tests use **pytest** + **pytest-asyncio**. Tests that hit real YouTube require n
 **LLM:** Claude-only via `claude-agent-sdk`. Auth via OAuth (Claude Max plan, `claude auth login`). Bundled CLI is a native binary — no Node.js needed for the SDK. Custom prompts supported.
 
 **yt-dlp:** Requires `yt-dlp-ejs` + Node.js runtime for YouTube JS challenge solving. `_base_opts()` centralizes shared config (cookies, JS runtime). `app/config.py` auto-adds nvm Node.js to PATH. All yt-dlp consumers (ytdlp, transcript) must use `_base_opts()`.
+
+**OCR:** chandra-ocr-2 via `llama-cpp-python` with GGUF quantized models (default Q4_K_M). Extracts on-screen text from keyframes. Models auto-downloaded from HuggingFace to `data/ocr_models/`. Requires CUDA build: `CMAKE_ARGS="-DGGML_CUDA=on" uv pip install --force-reinstall --no-binary llama-cpp-python --no-cache llama-cpp-python`.
+
+**GPU:** NVIDIA RTX 5060 (8GB VRAM). Whisper transcription (faster-whisper + CUDA), ffmpeg decoding (`-hwaccel cuda`), and OCR inference (llama-cpp-python + CUDA) use GPU when available, with automatic CPU fallback on failure. Keep VRAM usage conservative — 8GB is the limit.
 
 **Error handling:** Pipeline steps fail independently — partial results are still saved.
 

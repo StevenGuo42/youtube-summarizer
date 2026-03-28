@@ -99,40 +99,51 @@ def _parse_json3(path: Path) -> TranscriptResult:
     return TranscriptResult(text=full_text, segments=segments, source="captions")
 
 
-def _get_whisper_model_config() -> tuple[str, str, torch.dtype]:
-    """Return (model_name, device, compute_type) based on GPU availability."""
-    if torch.cuda.is_available():
-        return "deepdeepmind/distil-large-v3", "cuda", "float16"
-    return "small", "cpu", "float32"
-
-
 async def _transcribe_whisper(video_path: Path, work_dir: Path) -> TranscriptResult:
-    """Transcribe audio using faster-whisper."""
+    """Transcribe audio using faster-whisper. Tries GPU first, falls back to CPU."""
     audio_path = work_dir / "audio.wav"
     await _extract_audio(video_path, audio_path)
-
-    model_name, device, compute_type = _get_whisper_model_config()
-    logger.info("Using whisper model=%s device=%s compute_type=%s", model_name, device, compute_type)
 
     def _transcribe():
         from faster_whisper import WhisperModel
 
         WHISPER_MODEL_DIR.mkdir(parents=True, exist_ok=True)
-        model = WhisperModel(
-            model_name,
-            device=device,
-            compute_type=compute_type,
-            download_root=str(WHISPER_MODEL_DIR),
-        )
-        result_segments, _info = model.transcribe(str(audio_path))
-        segments = []
-        for seg in result_segments:
-            segments.append(Segment(
-                start=seg.start,
-                end=seg.end,
-                text=seg.text.strip(),
-            ))
-        return segments
+
+        configs = []
+        if torch.cuda.is_available():
+            configs.append(("Systran/faster-distil-whisper-large-v3", "cuda", "float16"))
+        configs.append(("small", "cpu", "float32"))
+
+        last_error = None
+        for model_name, device, compute_type in configs:
+            logger.info("Trying whisper model=%s device=%s compute_type=%s", model_name, device, compute_type)
+            model = None
+            try:
+                model = WhisperModel(
+                    model_name,
+                    device=device,
+                    compute_type=compute_type,
+                    download_root=str(WHISPER_MODEL_DIR),
+                )
+                result_segments, _info = model.transcribe(str(audio_path))
+                segments = []
+                for seg in result_segments:
+                    segments.append(Segment(
+                        start=seg.start,
+                        end=seg.end,
+                        text=seg.text.strip(),
+                    ))
+                return segments
+            except Exception as e:
+                last_error = e
+                logger.warning("Whisper failed with %s/%s: %s", model_name, device, e)
+                continue
+            finally:
+                if device == "cuda":
+                    model = None
+                    torch.cuda.empty_cache()
+
+        raise RuntimeError(f"All whisper configurations failed: {last_error}")
 
     segments = await asyncio.to_thread(_transcribe)
     full_text = " ".join(s.text for s in segments)

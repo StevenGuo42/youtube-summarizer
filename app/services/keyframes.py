@@ -15,6 +15,39 @@ from app.config import (
 
 logger = logging.getLogger(__name__)
 
+_nvidia_hwaccel: bool | None = None
+
+
+async def _check_nvidia_hwaccel() -> bool:
+    """Check if ffmpeg NVIDIA CUDA hwaccel is available (cached)."""
+    global _nvidia_hwaccel
+    if _nvidia_hwaccel is not None:
+        return _nvidia_hwaccel
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-hwaccels",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    stdout, _ = await proc.communicate()
+    _nvidia_hwaccel = "cuda" in stdout.decode()
+    logger.info("NVIDIA hwaccel available: %s", _nvidia_hwaccel)
+    return _nvidia_hwaccel
+
+
+async def _ffmpeg_exec(*args: str, use_gpu: bool = False) -> tuple[int, bytes]:
+    """Run ffmpeg with optional CUDA hardware-accelerated decoding."""
+    cmd = ["ffmpeg"]
+    if use_gpu:
+        cmd.extend(["-hwaccel", "cuda"])
+    cmd.extend(args)
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    return proc.returncode, stderr
+
 
 @dataclass
 class KeyFrame:
@@ -44,19 +77,25 @@ async def extract_keyframes(video_path: Path, work_dir: Path) -> list[KeyFrame]:
 
 
 async def _scene_detect(video_path: Path, frames_dir: Path) -> list[KeyFrame]:
-    """Extract keyframes using ffmpeg scene change detection."""
-    proc = await asyncio.create_subprocess_exec(
-        "ffmpeg", "-i", str(video_path),
+    """Extract keyframes using ffmpeg scene change detection (GPU-accelerated decode when available)."""
+    use_gpu = await _check_nvidia_hwaccel()
+    ffmpeg_args = (
+        "-i", str(video_path),
         "-vf", f"select='gt(scene,{SCENE_CHANGE_THRESHOLD})',showinfo",
         "-vsync", "vfr",
         str(frames_dir / "scene_%04d.png"),
         "-y",
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.PIPE,
     )
-    _, stderr = await proc.communicate()
 
-    if proc.returncode != 0:
+    returncode, stderr = await _ffmpeg_exec(*ffmpeg_args, use_gpu=use_gpu)
+
+    if returncode != 0 and use_gpu:
+        logger.warning("GPU-accelerated scene detection failed, falling back to CPU")
+        for f in frames_dir.glob("scene_*.png"):
+            f.unlink()
+        returncode, stderr = await _ffmpeg_exec(*ffmpeg_args, use_gpu=False)
+
+    if returncode != 0:
         logger.warning("ffmpeg scene detection failed: %s", stderr.decode()[-500:])
         return []
 
@@ -94,27 +133,34 @@ async def _get_duration(video_path: Path) -> float:
 
 
 async def _uniform_sample(video_path: Path, frames_dir: Path) -> list[KeyFrame]:
-    """Extract frames at uniform intervals using ffmpeg."""
+    """Extract frames at uniform intervals using ffmpeg (GPU-accelerated decode when available)."""
     # Clean any scene detection frames
     for f in frames_dir.glob("scene_*.png"):
         f.unlink()
 
+    use_gpu = await _check_nvidia_hwaccel()
     duration = await _get_duration(video_path)
     interval = min(UNIFORM_INTERVAL_SECONDS, max(duration / MAX_KEYFRAMES, 1))
     rate = 1 / interval
     logger.info("Uniform sampling: duration=%.1fs interval=%.1fs", duration, interval)
-    proc = await asyncio.create_subprocess_exec(
-        "ffmpeg", "-i", str(video_path),
+
+    ffmpeg_args = (
+        "-i", str(video_path),
         "-vf", f"fps={rate},showinfo",
         "-vsync", "vfr",
         str(frames_dir / "uniform_%04d.png"),
         "-y",
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.PIPE,
     )
-    _, stderr = await proc.communicate()
 
-    if proc.returncode != 0:
+    returncode, stderr = await _ffmpeg_exec(*ffmpeg_args, use_gpu=use_gpu)
+
+    if returncode != 0 and use_gpu:
+        logger.warning("GPU-accelerated uniform sampling failed, falling back to CPU")
+        for f in frames_dir.glob("uniform_*.png"):
+            f.unlink()
+        returncode, stderr = await _ffmpeg_exec(*ffmpeg_args, use_gpu=False)
+
+    if returncode != 0:
         logger.warning("ffmpeg uniform sampling failed: %s", stderr.decode()[-500:])
         return []
 
