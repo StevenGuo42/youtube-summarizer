@@ -8,6 +8,7 @@ import pytest
 from app.database import init_db
 from app.services.llm import (
     DEFAULT_PROMPT,
+    KeyframeMode,
     SummaryResult,
     _build_interleaved_transcript,
     _format_duration,
@@ -33,27 +34,41 @@ async def _ensure_db():
 
 class TestFormatTimestamp:
     def test_seconds_only(self):
-        assert _format_timestamp(45.0) == "0:45"
+        result = _format_timestamp(45.0)
+        logger.info("format_timestamp(45.0) = %s", result)
+        assert result == "0:45"
 
     def test_minutes_and_seconds(self):
-        assert _format_timestamp(125.5) == "2:05"
+        result = _format_timestamp(125.5)
+        logger.info("format_timestamp(125.5) = %s", result)
+        assert result == "2:05"
 
     def test_hours(self):
-        assert _format_timestamp(3661.0) == "1:01:01"
+        result = _format_timestamp(3661.0)
+        logger.info("format_timestamp(3661.0) = %s", result)
+        assert result == "1:01:01"
 
     def test_zero(self):
-        assert _format_timestamp(0.0) == "0:00"
+        result = _format_timestamp(0.0)
+        logger.info("format_timestamp(0.0) = %s", result)
+        assert result == "0:00"
 
 
 class TestFormatDuration:
     def test_minutes(self):
-        assert _format_duration(125) == "2m05s"
+        result = _format_duration(125)
+        logger.info("format_duration(125) = %s", result)
+        assert result == "2m05s"
 
     def test_hours(self):
-        assert _format_duration(3725) == "1h02m"
+        result = _format_duration(3725)
+        logger.info("format_duration(3725) = %s", result)
+        assert result == "1h02m"
 
     def test_short(self):
-        assert _format_duration(30) == "0m30s"
+        result = _format_duration(30)
+        logger.info("format_duration(30) = %s", result)
+        assert result == "0m30s"
 
 
 class TestParseResponse:
@@ -64,6 +79,7 @@ class TestParseResponse:
             "summary": "# Summary\n\nDetails here.",
         })
         result = _parse_response(raw)
+        logger.info("parse_response(valid JSON): title=%s, tldr=%s", result.title, result.tldr)
         assert result.title == "Test Video"
         assert result.tldr == "A test."
         assert result.summary == "# Summary\n\nDetails here."
@@ -72,6 +88,7 @@ class TestParseResponse:
     def test_json_in_code_block(self):
         raw = '```json\n{"title": "T", "tldr": "TL", "summary": "S"}\n```'
         result = _parse_response(raw)
+        logger.info("parse_response(code block): title=%s", result.title)
         assert result.title == "T"
         assert result.tldr == "TL"
         assert result.summary == "S"
@@ -79,11 +96,13 @@ class TestParseResponse:
     def test_plain_code_block(self):
         raw = '```\n{"title": "T", "tldr": "TL", "summary": "S"}\n```'
         result = _parse_response(raw)
+        logger.info("parse_response(plain code block): title=%s", result.title)
         assert result.title == "T"
 
     def test_invalid_json_falls_back(self):
         raw = "This is just plain text, not JSON at all."
         result = _parse_response(raw)
+        logger.info("parse_response(invalid JSON): title='%s', summary='%s'", result.title, result.summary[:50])
         assert result.title == ""
         assert result.tldr == ""
         assert result.summary == raw
@@ -92,6 +111,7 @@ class TestParseResponse:
     def test_partial_json(self):
         raw = json.dumps({"title": "Only Title"})
         result = _parse_response(raw)
+        logger.info("parse_response(partial JSON): title=%s, tldr='%s'", result.title, result.tldr)
         assert result.title == "Only Title"
         assert result.tldr == ""
         assert result.summary == ""
@@ -109,6 +129,7 @@ class TestBuildInterleavedTranscript:
             source="captions",
         )
         result = _build_interleaved_transcript(transcript, [])
+        logger.info("no_keyframes result: %s", result)
         assert result == "[0:00 - 0:04] hello world"
         assert "KEYFRAME" not in result
 
@@ -131,6 +152,7 @@ class TestBuildInterleavedTranscript:
             KeyFrame(timestamp=5.0, image_path=Path("/tmp/frame2.png")),
         ]
         result = _build_interleaved_transcript(transcript, keyframes)
+        logger.info("keyframes_group_segments result:\n%s", result)
         blocks = result.split("\n\n")
         assert len(blocks) == 2
         # First group: frame1 + segments a,b
@@ -154,6 +176,7 @@ class TestBuildInterleavedTranscript:
         )
         keyframes = [KeyFrame(timestamp=3.0, image_path=Path("/tmp/frame1.png"))]
         result = _build_interleaved_transcript(transcript, keyframes)
+        logger.info("segments_before_first_keyframe result:\n%s", result)
         blocks = result.split("\n\n")
         assert len(blocks) == 2
         # First block: pre-keyframe segment
@@ -176,6 +199,7 @@ class TestBuildInterleavedTranscript:
         )
         keyframes = [KeyFrame(timestamp=0.0, image_path=Path("/tmp/frame0.png"))]
         result = _build_interleaved_transcript(transcript, keyframes)
+        logger.info("keyframe_at_start result:\n%s", result)
         assert "[KEYFRAME: /tmp/frame0.png]" in result
         assert "[0:00 - 0:04] hello world" in result
 
@@ -190,6 +214,7 @@ class TestBuildInterleavedTranscript:
         )
         keyframes = [KeyFrame(timestamp=5.0, image_path=Path("/tmp/frame_end.png"))]
         result = _build_interleaved_transcript(transcript, keyframes)
+        logger.info("keyframe_after_all_segments result:\n%s", result)
         blocks = result.split("\n\n")
         assert blocks[0] == "[0:00 - 0:02] hello"
         assert "[KEYFRAME: /tmp/frame_end.png]" in blocks[1]
@@ -197,7 +222,126 @@ class TestBuildInterleavedTranscript:
     def test_no_segments_fallback(self):
         transcript = TranscriptResult(text="plain text only", segments=[], source="captions")
         result = _build_interleaved_transcript(transcript, [])
+        logger.info("no_segments_fallback result: %s", result)
         assert result == "plain text only"
+
+    def test_mode_ocr(self):
+        """OCR mode uses [OCR: path] tags instead of [KEYFRAME: path]."""
+        from pathlib import Path
+
+        transcript = TranscriptResult(
+            text="a b",
+            segments=[
+                Segment(start=0.0, end=3.0, text="a"),
+                Segment(start=3.0, end=6.0, text="b"),
+            ],
+            source="captions",
+        )
+        keyframes = [
+            KeyFrame(timestamp=0.0, image_path=Path("/tmp/frame1.png")),
+        ]
+        ocr_paths = [Path("/tmp/ocr/frame_0000_ocr.txt")]
+        result = _build_interleaved_transcript(
+            transcript, keyframes, mode=KeyframeMode.OCR, ocr_paths=ocr_paths,
+        )
+        logger.info("mode_ocr result:\n%s", result)
+        assert "[OCR: /tmp/ocr/frame_0000_ocr.txt]" in result
+        assert "[KEYFRAME:" not in result
+
+    def test_mode_ocr_image(self):
+        """OCR_IMAGE mode includes both [KEYFRAME:] and [OCR:] tags."""
+        from pathlib import Path
+
+        transcript = TranscriptResult(
+            text="a b",
+            segments=[
+                Segment(start=0.0, end=3.0, text="a"),
+                Segment(start=3.0, end=6.0, text="b"),
+            ],
+            source="captions",
+        )
+        keyframes = [
+            KeyFrame(timestamp=0.0, image_path=Path("/tmp/frame1.png")),
+        ]
+        ocr_paths = [Path("/tmp/ocr/frame_0000_ocr.txt")]
+        result = _build_interleaved_transcript(
+            transcript, keyframes, mode=KeyframeMode.OCR_IMAGE, ocr_paths=ocr_paths,
+        )
+        logger.info("mode_ocr_image result:\n%s", result)
+        assert "[KEYFRAME: /tmp/frame1.png]" in result
+        assert "[OCR: /tmp/ocr/frame_0000_ocr.txt]" in result
+
+    def test_mode_none(self):
+        """NONE mode returns plain transcript without keyframe markers."""
+        from pathlib import Path
+
+        transcript = TranscriptResult(
+            text="a b",
+            segments=[
+                Segment(start=0.0, end=3.0, text="a"),
+                Segment(start=3.0, end=6.0, text="b"),
+            ],
+            source="captions",
+        )
+        keyframes = [
+            KeyFrame(timestamp=0.0, image_path=Path("/tmp/frame1.png")),
+        ]
+        result = _build_interleaved_transcript(
+            transcript, keyframes, mode=KeyframeMode.NONE,
+        )
+        logger.info("mode_none result:\n%s", result)
+        assert "[KEYFRAME:" not in result
+        assert "[OCR:" not in result
+        assert "[0:00 - 0:06] a b" == result
+
+    def test_mode_ocr_with_none_path(self):
+        """OCR mode handles None in ocr_paths (empty OCR result)."""
+        from pathlib import Path
+
+        transcript = TranscriptResult(
+            text="a b",
+            segments=[
+                Segment(start=0.0, end=3.0, text="a"),
+                Segment(start=3.0, end=6.0, text="b"),
+            ],
+            source="captions",
+        )
+        keyframes = [
+            KeyFrame(timestamp=0.0, image_path=Path("/tmp/frame1.png")),
+            KeyFrame(timestamp=3.0, image_path=Path("/tmp/frame2.png")),
+        ]
+        ocr_paths = [Path("/tmp/ocr/frame_0000_ocr.txt"), None]
+        result = _build_interleaved_transcript(
+            transcript, keyframes, mode=KeyframeMode.OCR, ocr_paths=ocr_paths,
+        )
+        logger.info("mode_ocr_none_path result:\n%s", result)
+        assert "[OCR: /tmp/ocr/frame_0000_ocr.txt]" in result
+        # Second keyframe has no OCR file — no [OCR:] tag for it
+        blocks = result.split("\n\n")
+        assert "[OCR:" not in blocks[1]
+
+    def test_mode_image_default(self):
+        """Default mode (IMAGE) matches existing behavior exactly."""
+        from pathlib import Path
+
+        transcript = TranscriptResult(
+            text="a b",
+            segments=[
+                Segment(start=0.0, end=3.0, text="a"),
+                Segment(start=3.0, end=6.0, text="b"),
+            ],
+            source="captions",
+        )
+        keyframes = [
+            KeyFrame(timestamp=0.0, image_path=Path("/tmp/frame1.png")),
+        ]
+        # Call without mode (should default to IMAGE)
+        result_default = _build_interleaved_transcript(transcript, keyframes)
+        result_explicit = _build_interleaved_transcript(
+            transcript, keyframes, mode=KeyframeMode.IMAGE,
+        )
+        assert result_default == result_explicit
+        assert "[KEYFRAME: /tmp/frame1.png]" in result_default
 
 
 # --- Integration tests (require Claude auth) ---
