@@ -3,6 +3,7 @@ import json
 import logging
 import shutil
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
@@ -12,6 +13,15 @@ from app.services.keyframes import KeyFrame
 from app.services.transcript import TranscriptResult
 
 logger = logging.getLogger(__name__)
+
+
+class KeyframeMode(str, Enum):
+    IMAGE = "image"
+    OCR = "ocr"
+    OCR_IMAGE = "ocr+image"
+    OCR_INLINE = "ocr-inline"
+    OCR_INLINE_IMAGE = "ocr-inline+image"
+    NONE = "none"
 
 
 def _get_cli_path() -> str:
@@ -132,52 +142,58 @@ async def summarize(
 
 
 def _build_interleaved_transcript(
-    transcript: TranscriptResult, keyframes: list[KeyFrame]
+    transcript: TranscriptResult,
+    keyframes: list[KeyFrame],
+    mode: KeyframeMode = KeyframeMode.IMAGE,
+    ocr_paths: list[Path | None] | None = None,
 ) -> str:
     """Build transcript grouped by keyframe boundaries.
 
-    Each keyframe marks a section boundary. Transcript segments between two
-    keyframes are merged into a single block. The result looks like:
-
-        [KEYFRAME: frame1.png]
-        [0:00 - 0:58] First section text merged together...
-
-        [KEYFRAME: frame2.png]
-        [0:58 - 1:55] Second section text merged together...
+    Output format depends on mode:
+    - IMAGE: [KEYFRAME: path.png] headers (current default)
+    - OCR: [OCR: path.txt] headers (text files for Claude to read)
+    - OCR_IMAGE: both [KEYFRAME:] and [OCR:] headers
+    - OCR_INLINE / OCR_INLINE_IMAGE: OCR already injected into transcript segments;
+      OCR_INLINE passes no keyframes, OCR_INLINE_IMAGE passes keyframes for IMAGE headers
+    - NONE: plain transcript, no keyframe markers
     """
     if not transcript.segments:
         return transcript.text
 
-    if not keyframes:
-        # No keyframes — just merge all segments with timestamps
+    if not keyframes or mode == KeyframeMode.NONE:
         return _merge_segments(transcript.segments)
 
     # Sort keyframes by timestamp
     sorted_kf = sorted(keyframes, key=lambda kf: kf.timestamp)
 
-    # Assign each segment to a keyframe group.
-    # A segment belongs to the most recent keyframe at or before its start time.
-    # Segments before the first keyframe go into group 0 (no keyframe header).
-    groups: list[tuple[KeyFrame | None, list]] = []
+    # Build a mapping from keyframe to its OCR path
+    kf_ocr: dict[int, Path | None] = {}
+    if ocr_paths:
+        # ocr_paths is parallel to the original keyframes list;
+        # build index mapping from sorted position to ocr path
+        kf_to_idx = {id(kf): i for i, kf in enumerate(keyframes)}
+        for i, kf in enumerate(sorted_kf):
+            orig_idx = kf_to_idx[id(kf)]
+            if orig_idx < len(ocr_paths):
+                kf_ocr[i] = ocr_paths[orig_idx]
+
+    # Assign each segment to a keyframe group
+    groups: list[tuple[int | None, KeyFrame | None, list]] = []
 
     kf_idx = 0
-    # Segments before the first keyframe
     pre_segments = []
     for seg in transcript.segments:
-        # Advance keyframe index while next keyframe is at or before this segment
         while kf_idx < len(sorted_kf) and sorted_kf[kf_idx].timestamp <= seg.start:
-            # Start a new group for this keyframe
-            groups.append((sorted_kf[kf_idx], []))
+            groups.append((kf_idx, sorted_kf[kf_idx], []))
             kf_idx += 1
 
         if groups:
-            groups[-1][1].append(seg)
+            groups[-1][2].append(seg)
         else:
             pre_segments.append(seg)
 
-    # Any remaining keyframes after the last segment
     while kf_idx < len(sorted_kf):
-        groups.append((sorted_kf[kf_idx], []))
+        groups.append((kf_idx, sorted_kf[kf_idx], []))
         kf_idx += 1
 
     # Build output
@@ -186,10 +202,15 @@ def _build_interleaved_transcript(
     if pre_segments:
         blocks.append(_merge_segments(pre_segments))
 
-    for kf, segments in groups:
+    for idx, kf, segments in groups:
         block_lines = []
         if kf:
-            block_lines.append(f"[KEYFRAME: {kf.image_path}]")
+            if mode in (KeyframeMode.IMAGE, KeyframeMode.OCR_IMAGE, KeyframeMode.OCR_INLINE_IMAGE):
+                block_lines.append(f"[KEYFRAME: {kf.image_path}]")
+            if mode in (KeyframeMode.OCR, KeyframeMode.OCR_IMAGE):
+                ocr_path = kf_ocr.get(idx)
+                if ocr_path:
+                    block_lines.append(f"[OCR: {ocr_path}]")
         if segments:
             block_lines.append(_merge_segments(segments))
         if block_lines:
