@@ -6,6 +6,7 @@ requires-python = ">=3.14"
 dependencies = [
     "aiosqlite>=0.22.1",
     "anthropic>=0.86.0",
+    "chandra-ocr[hf]>=0.2.0",
     "claude-agent-sdk>=0.1.50",
     "fastapi>=0.135.1",
     "faster-whisper>=1.2.1",
