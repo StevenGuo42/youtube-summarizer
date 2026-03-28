@@ -8,6 +8,7 @@ data/*
 data/test/*
 !data/test/funsd_82092117.png
 docs/module_design/
+docs/superpowers/
 logs/
 .pytest_cache/
 tests/test_config.json
