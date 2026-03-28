@@ -1,19 +1,15 @@
 import asyncio
-import base64
 import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.config import OCR_GGUF_REPO, OCR_MODEL_DIR, OCR_QUANT
+import torch
+from PIL import Image
+
+from app.config import OCR_MODEL_DIR, OCR_MODEL_NAME, OCR_PROMPT_TYPE
 from app.services.keyframes import KeyFrame
 
 logger = logging.getLogger(__name__)
-
-OCR_PROMPT = (
-    "Extract all text visible in this image. "
-    "Return only the extracted text, preserving layout where possible. "
-    "If no text is visible, return NONE."
-)
 
 
 @dataclass
@@ -23,83 +19,60 @@ class OcrResult:
     text: str
 
 
-def _download_models() -> tuple[Path, Path]:
-    """Download GGUF model and mmproj if not cached."""
-    from huggingface_hub import hf_hub_download
+def _load_model():
+    """Load chandra-ocr-2 with 4-bit quantization (GPU) or float32 (CPU)."""
+    from transformers import AutoModelForImageTextToText, AutoProcessor
 
-    OCR_MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    cache_dir = str(OCR_MODEL_DIR)
+    gpu = torch.cuda.is_available()
 
-    model_path = Path(hf_hub_download(
-        repo_id=OCR_GGUF_REPO,
-        filename=f"chandra-ocr-2-{OCR_QUANT}.gguf",
-        local_dir=OCR_MODEL_DIR,
-    ))
-    mmproj_path = Path(hf_hub_download(
-        repo_id=OCR_GGUF_REPO,
-        filename="chandra-ocr-2.mmproj-q8_0.gguf",
-        local_dir=OCR_MODEL_DIR,
-    ))
-    return model_path, mmproj_path
+    if gpu:
+        from transformers import BitsAndBytesConfig
 
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+        )
+        logger.info("Loading %s (4-bit quantized, CUDA)", OCR_MODEL_NAME)
+        model = AutoModelForImageTextToText.from_pretrained(
+            OCR_MODEL_NAME,
+            quantization_config=quantization_config,
+            device_map="auto",
+            cache_dir=cache_dir,
+        )
+    else:
+        logger.info("Loading %s (CPU, float32)", OCR_MODEL_NAME)
+        model = AutoModelForImageTextToText.from_pretrained(
+            OCR_MODEL_NAME,
+            device_map="cpu",
+            torch_dtype=torch.float32,
+            cache_dir=cache_dir,
+        )
 
-def _image_to_data_uri(image_path: Path) -> str:
-    """Convert image file to base64 data URI."""
-    data = image_path.read_bytes()
-    b64 = base64.b64encode(data).decode()
-    suffix = image_path.suffix.lower().lstrip(".")
-    mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(
-        suffix, "image/png"
-    )
-    return f"data:{mime};base64,{b64}"
+    model.eval()
+    processor = AutoProcessor.from_pretrained(OCR_MODEL_NAME, cache_dir=cache_dir)
+    processor.tokenizer.padding_side = "left"
+    model.processor = processor
+    return model, gpu
 
 
 def _run_ocr(keyframes: list[KeyFrame]) -> list[OcrResult]:
-    """Load model and run OCR on all keyframes."""
-    from llama_cpp import Llama
-    from llama_cpp.llama_chat_format import Qwen25VLChatHandler
+    """Load model, run OCR on all keyframes, release model."""
+    from chandra.model.hf import generate_hf
+    from chandra.model.schema import BatchInputItem
+    from chandra.output import parse_markdown
 
-    model_path, mmproj_path = _download_models()
-    logger.info("Loading chandra-ocr-2 GGUF (%s)", OCR_QUANT)
-
-    chat_handler = Qwen25VLChatHandler(clip_model_path=str(mmproj_path))
-    llm = None
-    gpu = True
-
-    try:
-        llm = Llama(
-            model_path=str(model_path),
-            chat_handler=chat_handler,
-            n_ctx=2048,
-            n_gpu_layers=-1,
-        )
-    except Exception as e:
-        logger.warning("GPU model load failed (%s), trying CPU", e)
-        gpu = False
-        llm = Llama(
-            model_path=str(model_path),
-            chat_handler=chat_handler,
-            n_ctx=2048,
-            n_gpu_layers=0,
-        )
-
+    model, gpu = _load_model()
     try:
         results = []
         for kf in keyframes:
             try:
-                data_uri = _image_to_data_uri(kf.image_path)
-                response = llm.create_chat_completion(
-                    messages=[{
-                        "role": "user",
-                        "content": [
-                            {"type": "image_url", "image_url": {"url": data_uri}},
-                            {"type": "text", "text": OCR_PROMPT},
-                        ],
-                    }],
-                    max_tokens=1024,
-                )
-                text = response["choices"][0]["message"]["content"].strip()
-                if text == "NONE":
-                    text = ""
+                batch = [BatchInputItem(
+                    image=Image.open(kf.image_path),
+                    prompt_type=OCR_PROMPT_TYPE,
+                )]
+                gen_result = generate_hf(batch, model)[0]
+                text = parse_markdown(gen_result.raw)
                 results.append(OcrResult(
                     timestamp=kf.timestamp,
                     image_path=kf.image_path,
@@ -114,19 +87,13 @@ def _run_ocr(keyframes: list[KeyFrame]) -> list[OcrResult]:
                 ))
         return results
     finally:
-        del llm
-        del chat_handler
+        del model
         if gpu:
-            try:
-                import torch
-
-                torch.cuda.empty_cache()
-            except Exception:
-                pass
+            torch.cuda.empty_cache()
 
 
 async def extract_text(keyframes: list[KeyFrame]) -> list[OcrResult]:
-    """Run OCR on keyframe images using chandra-ocr-2 GGUF model."""
+    """Run OCR on keyframe images using chandra-ocr-2."""
     if not keyframes:
         return []
 
