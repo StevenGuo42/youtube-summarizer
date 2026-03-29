@@ -353,8 +353,8 @@ def _format_timestamp(seconds: float) -> str:
     return f"{m}:{s:02d}"
 
 
-def _format_duration(seconds: int) -> str:
-    m, s = divmod(seconds, 60)
+def _format_duration(seconds: int | float) -> str:
+    m, s = divmod(int(seconds), 60)
     h, m = divmod(m, 60)
     if h:
         return f"{h}h{m:02d}m"
