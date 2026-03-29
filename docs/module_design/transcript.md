@@ -15,14 +15,22 @@ Caption extraction with faster-whisper fallback.
 - Caption fetch errors are caught and trigger whisper fallback (not a hard failure)
 - Uses `_base_opts()` from ytdlp service to get cookies + JS runtime config
 
+### Language Detection
+
+- `_detect_language()` runs before transcription using the `small` model (first 30s only)
+- GPU: `small` model with float16 (~1.7s), CPU: `small` model with int8 (~2.5s)
+- Detected language passed to main transcription via `language=` parameter
+- Model freed after detection before main transcription loads
+
 ### GPU Support (Whisper)
 
-- GPU path: `Systran/faster-distil-whisper-large-v3` (CTranslate2 format) on CUDA with float16
+- GPU path: `Systran/faster-whisper-large-v3` (non-distilled, multilingual, ~3.8GB VRAM) on CUDA with float16
 - CPU fallback: `small` model with float32
 - Detection: `torch.cuda.is_available()` — if GPU available, try it first; on failure, fall back to CPU
 - Models downloaded on first use, cached in `data/whisper_models/`
 - VRAM cleanup: model reference set to `None` + `torch.cuda.empty_cache()` in `finally` block after GPU transcription
 - Must use `Systran/faster-*` repos (CTranslate2 format), NOT `distil-whisper/*` (Transformers format)
+- Do NOT use `faster-distil-whisper-large-v3` — it is English-only and produces gibberish for other languages
 
 ## Interface
 
