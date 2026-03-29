@@ -79,32 +79,52 @@ async def extract_keyframes(video_path: Path, work_dir: Path) -> list[KeyFrame]:
 def deduplicate_keyframes(
     keyframes: list[KeyFrame],
     ocr_results: list | None = None,
+    mode: str = "regular",
 ) -> tuple[list[KeyFrame], list | None]:
     """Deduplicate similar consecutive keyframes.
 
-    With ocr_results: groups by fuzzy OCR text match (SequenceMatcher ratio > 0.85).
-    Without: groups by perceptual hash (pHash hamming distance <= 5).
+    Modes:
+    - "regular": pHash with hamming distance > 5 (good for most videos)
+    - "slides": pHash with hamming distance > 2 (stricter, keeps more frames for presentations)
+    - "ocr": fuzzy OCR text match (SequenceMatcher ratio <= 0.85). Requires ocr_results.
+    - "none": no dedup, return as-is
+
+    Keeps the LAST frame per group (last slide in a sequence has the most content).
     Returns (deduped_keyframes, deduped_ocr_results). ocr_results output is None when input is None.
     """
-    if not keyframes:
-        return ([], None) if ocr_results is None else ([], [])
+    if mode == "none" or not keyframes:
+        return list(keyframes), list(ocr_results) if ocr_results is not None else None
 
     if len(keyframes) == 1:
-        return (list(keyframes), None) if ocr_results is None else (list(keyframes), list(ocr_results))
+        return list(keyframes), list(ocr_results) if ocr_results is not None else None
 
+    if mode == "ocr":
+        if ocr_results is None:
+            logger.warning("OCR dedup requested but no ocr_results provided, falling back to regular")
+            mode = "regular"
+        else:
+            return _dedup_by_ocr(keyframes, ocr_results)
+
+    threshold = 2 if mode == "slides" else 5
+    deduped = _dedup_by_phash(keyframes, threshold=threshold)
+
+    # Filter ocr_results to match deduped keyframes if present
     if ocr_results is not None:
-        return _dedup_by_ocr(keyframes, ocr_results)
-    return _dedup_by_phash(keyframes), None
+        deduped_set = set(id(kf) for kf in deduped)
+        deduped_ocr = [ocr_results[i] for i, kf in enumerate(keyframes) if id(kf) in deduped_set]
+        return deduped, deduped_ocr
+
+    return deduped, None
 
 
 def _dedup_by_ocr(
     keyframes: list[KeyFrame], ocr_results: list,
 ) -> tuple[list[KeyFrame], list]:
-    """Group consecutive keyframes by fuzzy OCR text similarity."""
+    """Group consecutive keyframes by fuzzy OCR text similarity. Keeps last per group."""
     from difflib import SequenceMatcher
 
-    keep_kf = [keyframes[0]]
-    keep_ocr = [ocr_results[0]]
+    # Track groups: each group is a list of indices
+    groups: list[list[int]] = [[0]]
     rep_text = ocr_results[0].text.strip()
 
     for i in range(1, len(keyframes)):
@@ -112,23 +132,28 @@ def _dedup_by_ocr(
 
         # Empty OCR text frames are always kept as unique
         if not rep_text or not curr_text:
-            keep_kf.append(keyframes[i])
-            keep_ocr.append(ocr_results[i])
+            groups.append([i])
             rep_text = curr_text
             continue
 
         ratio = SequenceMatcher(None, rep_text, curr_text).ratio()
-        if ratio <= 0.85:
-            keep_kf.append(keyframes[i])
-            keep_ocr.append(ocr_results[i])
+        if ratio > 0.85:
+            groups[-1].append(i)  # same group
+        else:
+            groups.append([i])  # new group
             rep_text = curr_text
+
+    # Keep last frame per group
+    keep_indices = [g[-1] for g in groups]
+    keep_kf = [keyframes[i] for i in keep_indices]
+    keep_ocr = [ocr_results[i] for i in keep_indices]
 
     logger.info("OCR dedup: %d -> %d keyframes", len(keyframes), len(keep_kf))
     return keep_kf, keep_ocr
 
 
-def _dedup_by_phash(keyframes: list[KeyFrame]) -> list[KeyFrame]:
-    """Group consecutive keyframes by perceptual hash similarity."""
+def _dedup_by_phash(keyframes: list[KeyFrame], threshold: int = 5) -> list[KeyFrame]:
+    """Group consecutive keyframes by perceptual hash similarity. Keeps last per group."""
     import imagehash
     from PIL import Image
 
@@ -136,16 +161,22 @@ def _dedup_by_phash(keyframes: list[KeyFrame]) -> list[KeyFrame]:
     for kf in keyframes:
         hashes.append(imagehash.phash(Image.open(kf.image_path)))
 
-    keep = [keyframes[0]]
+    # Track groups: each group is a list of indices
+    groups: list[list[int]] = [[0]]
     rep_hash = hashes[0]
 
     for i in range(1, len(keyframes)):
         distance = rep_hash - hashes[i]
-        if distance > 5:
-            keep.append(keyframes[i])
+        if distance > threshold:
+            groups.append([i])  # new group
             rep_hash = hashes[i]
+        else:
+            groups[-1].append(i)  # same group
 
-    logger.info("pHash dedup: %d -> %d keyframes", len(keyframes), len(keep))
+    # Keep last frame per group
+    keep = [keyframes[g[-1]] for g in groups]
+
+    logger.info("pHash dedup (threshold=%d): %d -> %d keyframes", threshold, len(keyframes), len(keep))
     return keep
 
 

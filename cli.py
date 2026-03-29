@@ -29,6 +29,8 @@ def parse_args():
     p.add_argument("--no-keyframes", action="store_true", help="Skip keyframe extraction")
     p.add_argument("--ocr", choices=["none", "file", "inline"], default="none",
                    help="OCR mode for keyframes: none (default), file (save to .txt for Claude to read), inline (inject into transcript)")
+    p.add_argument("--dedup", choices=["regular", "slides", "ocr", "none"], default="regular",
+                   help="Keyframe dedup mode: regular (default, pHash), slides (stricter pHash for presentations), ocr (dedup by OCR text), none")
     return p.parse_args()
 
 
@@ -144,25 +146,37 @@ async def run(args):
         except Exception:
             logger.warning("Keyframe extraction failed, continuing without")
 
-    # Run OCR if needed
+    # Dedup + OCR pipeline (order depends on dedup mode)
     ocr_results = None
     ocr_paths = None
     needs_ocr = mode in (
         KeyframeMode.OCR, KeyframeMode.OCR_IMAGE,
         KeyframeMode.OCR_INLINE, KeyframeMode.OCR_INLINE_IMAGE,
     )
-    if needs_ocr and keyframes:
+    dedup_mode = args.dedup
+
+    if dedup_mode == "ocr" and needs_ocr and keyframes:
+        # OCR dedup: run OCR on all frames first, then dedup by text
         from app.services.ocr import extract_text
-        logger.info("Running OCR on %d keyframes...", len(keyframes))
+        logger.info("Running OCR on %d keyframes (before dedup)...", len(keyframes))
         ocr_results = await extract_text(keyframes)
 
-    # Deduplicate keyframes
-    if keyframes:
         from app.services.keyframes import deduplicate_keyframes
-        keyframes, ocr_results = deduplicate_keyframes(keyframes, ocr_results=ocr_results)
-        logger.info("After dedup: %d keyframes", len(keyframes))
+        keyframes, ocr_results = deduplicate_keyframes(keyframes, ocr_results=ocr_results, mode="ocr")
+        logger.info("After OCR dedup: %d keyframes", len(keyframes))
+    else:
+        # pHash dedup first (regular/slides), then OCR on deduped frames only
+        if keyframes and dedup_mode in ("regular", "slides"):
+            from app.services.keyframes import deduplicate_keyframes
+            keyframes, _ = deduplicate_keyframes(keyframes, mode=dedup_mode)
+            logger.info("After pHash dedup: %d keyframes", len(keyframes))
 
-    # Save OCR files for file-based modes (after dedup)
+        if needs_ocr and keyframes:
+            from app.services.ocr import extract_text
+            logger.info("Running OCR on %d keyframes...", len(keyframes))
+            ocr_results = await extract_text(keyframes)
+
+    # Save OCR files for file-based modes
     if ocr_results and mode in (KeyframeMode.OCR, KeyframeMode.OCR_IMAGE):
         from app.services.ocr import save_ocr_results
         ocr_paths = save_ocr_results(ocr_results, work_dir)
