@@ -24,13 +24,13 @@ uv run pytest -k "test_name"   # Run tests matching pattern
 
 ## Testing
 
-Tests use **pytest** + **pytest-asyncio**. Tests that hit real YouTube require network access. Use `tmp_path` fixture for temp directories in download tests. Test logs auto-save to `logs/tests/<module>_<timestamp>.log` (3 per module kept) via `tests/conftest.py`. Use `logger = logging.getLogger(__name__)` in test files.
+Tests use **pytest** + **pytest-asyncio**. Tests that hit real YouTube require network access. Use `tmp_path` fixture for temp directories in download tests. Test logs auto-save to `logs/tests/<module>_<timestamp>.log` (3 per module kept) via `tests/conftest.py`. Use `logger = logging.getLogger(__name__)` in test files. All tests must log their results — print text results directly, and log file paths for non-text results (images, audio, video).
 
 ## Architecture
 
 For any functionality changes, /docs/module_design must be updated first. 
 
-**Pipeline:** Download (yt-dlp) → Transcript (captions/Whisper) → Keyframes (ffmpeg) → OCR (chandra) → Summarize (LLM) → Cleanup. One job at a time via async task queue.
+**Pipeline:** Download (yt-dlp) → Transcript (captions/Whisper) → Keyframes (ffmpeg) → Dedup (pHash/SSIM) → OCR (chandra, on deduped frames only) → Summarize (LLM) → Cleanup. One job at a time via async task queue.
 
 **Backend (`app/`):** `main.py` (FastAPI app), `config.py`, `database.py`, `routers/` (auth, browse, queue, summaries, settings), `services/` (ytdlp, transcript, keyframes, ocr, llm, pipeline), `queue/worker.py`.
 
@@ -42,9 +42,15 @@ For any functionality changes, /docs/module_design must be updated first.
 
 **yt-dlp:** Requires `yt-dlp-ejs` + Node.js runtime for YouTube JS challenge solving. `_base_opts()` centralizes shared config (cookies, JS runtime). `app/config.py` auto-adds nvm Node.js to PATH. All yt-dlp consumers (ytdlp, transcript) must use `_base_opts()`.
 
-**OCR:** chandra-ocr-2 via `llama-cpp-python` with GGUF quantized models (default Q4_K_M). Extracts on-screen text from keyframes. Models auto-downloaded from HuggingFace to `data/ocr_models/`. Requires CUDA build: `CMAKE_ARGS="-DGGML_CUDA=on" uv pip install --force-reinstall --no-binary llama-cpp-python --no-cache llama-cpp-python`.
+**OCR:** chandra-ocr-2 via `transformers` + `chandra-ocr[hf]`. 4-bit quantized with `bitsandbytes` (~2.5 GB VRAM). Extracts on-screen text from keyframes. Models auto-downloaded from HuggingFace to `data/ocr_models/`. Prompt type `"ocr"` (handles tables, math, code).
 
-**GPU:** NVIDIA RTX 5060 (8GB VRAM). Whisper transcription (faster-whisper + CUDA), ffmpeg decoding (`-hwaccel cuda`), and OCR inference (llama-cpp-python + CUDA) use GPU when available, with automatic CPU fallback on failure. Keep VRAM usage conservative — 8GB is the limit.
+**Keyframe Dedup:** `deduplicate_keyframes()` in keyframes.py. Four modes: `regular` (pHash hamming >5), `slides` (SSIM <0.95, better for presentations), `ocr` (fuzzy text match), `none`. Keeps last frame per group. CLI flag: `--dedup {regular,slides,ocr,none}`.
+
+**Transcript format:** XML-tagged blocks with timestamp ranges. `<transcript>` for speech, `<ocr_text>` for inline OCR. No per-segment timestamps — keyframe range provides timing context.
+
+**Whisper:** Language auto-detected via `small` model before transcription. GPU uses `Systran/faster-whisper-large-v3` (non-distilled, multilingual, ~3.8GB VRAM). Do NOT use distilled variant — English-only.
+
+**GPU:** NVIDIA RTX 5060 (8GB VRAM). Whisper transcription (faster-whisper + CUDA), ffmpeg decoding (`-hwaccel cuda`), and OCR inference (transformers + CUDA) use GPU when available, with automatic CPU fallback on failure. Keep VRAM usage conservative — 8GB is the limit.
 
 **Error handling:** Pipeline steps fail independently — partial results are still saved.
 
