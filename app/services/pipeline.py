@@ -21,6 +21,19 @@ STEPS = ["downloading", "transcribing", "extracting_keyframes", "deduplicating",
 _OCR_MODES = {"ocr", "ocr+image", "ocr-inline", "ocr-inline+image"}
 
 
+async def _get_llm_settings() -> dict:
+    """Read custom_prompt and model from llm_settings table."""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT model, custom_prompt FROM llm_settings WHERE id = 1")
+        row = await cursor.fetchone()
+        if row:
+            return {"model": row["model"], "custom_prompt": row["custom_prompt"]}
+        return {"model": None, "custom_prompt": None}
+    finally:
+        await db.close()
+
+
 async def _update_job(job_id: str, **kwargs):
     """Update job fields in the database."""
     db = await get_db()
@@ -73,6 +86,8 @@ async def process_job(job_id: str) -> None:
     keyframe_mode_str = job["keyframe_mode"] or "image"
     work_dir = TMP_DIR / job_id
     work_dir.mkdir(exist_ok=True)
+
+    llm_settings = await _get_llm_settings()
 
     transcript = None
     keyframes: list[KeyFrame] = []
@@ -191,6 +206,8 @@ async def process_job(job_id: str) -> None:
                 transcript=transcript,
                 keyframes=keyframes,
                 video_meta=video_meta,
+                custom_prompt=llm_settings["custom_prompt"],
+                model=llm_settings["model"],
                 keyframe_mode=KeyframeMode(keyframe_mode_str),
                 ocr_paths=ocr_paths,
                 ocr_results=ocr_results,
@@ -282,6 +299,8 @@ async def process_batch(job_ids: list[str]) -> None:
 
     if not batch:
         return
+
+    llm_settings = await _get_llm_settings()
 
     # Step 1: Download all
     for bj in _active(batch):
@@ -399,6 +418,8 @@ async def process_batch(job_ids: list[str]) -> None:
                 transcript=transcript,
                 keyframes=bj.keyframes,
                 video_meta=video_meta,
+                custom_prompt=llm_settings["custom_prompt"],
+                model=llm_settings["model"],
                 keyframe_mode=KeyframeMode(bj.keyframe_mode_str),
                 ocr_paths=bj.ocr_paths,
                 ocr_results=bj.ocr_results,

@@ -24,7 +24,8 @@ TEST_PLAYLIST_ID = "PL2F4AF82A41D0D2C6"
 @pytest.mark.asyncio
 async def test_get_video_info():
     info = await get_video_info(TEST_VIDEO_URL)
-    logger.info("Video info: %s", info)
+    logger.info("Video info: id=%s title='%s' duration=%ss channel=%s",
+                info["id"], info["title"], info.get("duration"), info.get("channel"))
     assert info["id"] == TEST_VIDEO_ID
     assert info["title"] is not None
     assert info["duration"] is not None and info["duration"] > 0
@@ -33,7 +34,7 @@ async def test_get_video_info():
 @pytest.mark.asyncio
 async def test_search_channels():
     results = await search_channels("jawed karim")
-    logger.info("Found %d channels: %s", len(results), results)
+    logger.info("Found %d channels: %s", len(results), [ch["name"] for ch in results[:3]])
     assert len(results) > 0
     assert all("id" in ch and "name" in ch for ch in results)
 

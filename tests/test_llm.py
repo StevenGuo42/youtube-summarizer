@@ -35,41 +35,27 @@ async def _ensure_db():
 
 class TestFormatTimestamp:
     def test_seconds_only(self):
-        result = _format_timestamp(45.0)
-        logger.info("format_timestamp(45.0) = %s", result)
-        assert result == "0:45"
+        assert _format_timestamp(45.0) == "0:45"
 
     def test_minutes_and_seconds(self):
-        result = _format_timestamp(125.5)
-        logger.info("format_timestamp(125.5) = %s", result)
-        assert result == "2:05"
+        assert _format_timestamp(125.5) == "2:05"
 
     def test_hours(self):
-        result = _format_timestamp(3661.0)
-        logger.info("format_timestamp(3661.0) = %s", result)
-        assert result == "1:01:01"
+        assert _format_timestamp(3661.0) == "1:01:01"
 
     def test_zero(self):
-        result = _format_timestamp(0.0)
-        logger.info("format_timestamp(0.0) = %s", result)
-        assert result == "0:00"
+        assert _format_timestamp(0.0) == "0:00"
 
 
 class TestFormatDuration:
     def test_minutes(self):
-        result = _format_duration(125)
-        logger.info("format_duration(125) = %s", result)
-        assert result == "2m05s"
+        assert _format_duration(125) == "2m05s"
 
     def test_hours(self):
-        result = _format_duration(3725)
-        logger.info("format_duration(3725) = %s", result)
-        assert result == "1h02m"
+        assert _format_duration(3725) == "1h02m"
 
     def test_short(self):
-        result = _format_duration(30)
-        logger.info("format_duration(30) = %s", result)
-        assert result == "0m30s"
+        assert _format_duration(30) == "0m30s"
 
 
 class TestParseResponse:
@@ -80,7 +66,6 @@ class TestParseResponse:
             "summary": "# Summary\n\nDetails here.",
         })
         result = _parse_response(raw)
-        logger.info("parse_response(valid JSON): title=%s, tldr=%s", result.title, result.tldr)
         assert result.title == "Test Video"
         assert result.tldr == "A test."
         assert result.summary == "# Summary\n\nDetails here."
@@ -89,7 +74,6 @@ class TestParseResponse:
     def test_json_in_code_block(self):
         raw = '```json\n{"title": "T", "tldr": "TL", "summary": "S"}\n```'
         result = _parse_response(raw)
-        logger.info("parse_response(code block): title=%s", result.title)
         assert result.title == "T"
         assert result.tldr == "TL"
         assert result.summary == "S"
@@ -97,13 +81,12 @@ class TestParseResponse:
     def test_plain_code_block(self):
         raw = '```\n{"title": "T", "tldr": "TL", "summary": "S"}\n```'
         result = _parse_response(raw)
-        logger.info("parse_response(plain code block): title=%s", result.title)
         assert result.title == "T"
 
     def test_invalid_json_falls_back(self):
         raw = "This is just plain text, not JSON at all."
         result = _parse_response(raw)
-        logger.info("parse_response(invalid JSON): title='%s', summary='%s'", result.title, result.summary[:50])
+        logger.info("parse_response fallback: raw text -> title='', summary=raw")
         assert result.title == ""
         assert result.tldr == ""
         assert result.summary == raw
@@ -112,7 +95,6 @@ class TestParseResponse:
     def test_partial_json(self):
         raw = json.dumps({"title": "Only Title"})
         result = _parse_response(raw)
-        logger.info("parse_response(partial JSON): title=%s, tldr='%s'", result.title, result.tldr)
         assert result.title == "Only Title"
         assert result.tldr == ""
         assert result.summary == ""
@@ -130,7 +112,7 @@ class TestBuildInterleavedTranscript:
             source="captions",
         )
         result = _build_interleaved_transcript(transcript, [], mode=KeyframeMode.NONE)
-        logger.info("none_mode result:\n%s", result)
+        logger.info("NONE mode output:\n%s", result)
         assert result == "<transcript>\nhello world\n</transcript>"
         assert "KEYFRAME" not in result
 
@@ -156,7 +138,7 @@ class TestBuildInterleavedTranscript:
         result = _build_interleaved_transcript(
             transcript, keyframes, video_meta=meta,
         )
-        logger.info("image_mode result:\n%s", result)
+        logger.info("IMAGE mode output:\n%s", result)
         blocks = result.split("\n\n")
         assert len(blocks) == 2
         assert "[0:00 - 0:05]" in blocks[0]
@@ -189,7 +171,7 @@ class TestBuildInterleavedTranscript:
             transcript, keyframes, mode=KeyframeMode.OCR,
             ocr_paths=ocr_paths, video_meta=meta,
         )
-        logger.info("ocr_mode result:\n%s", result)
+        logger.info("OCR mode output:\n%s", result)
         assert "[OCR: /tmp/ocr/frame_0000_ocr.txt]" in result
         assert "[KEYFRAME:" not in result
         assert "<transcript>" in result
@@ -215,7 +197,7 @@ class TestBuildInterleavedTranscript:
             transcript, keyframes, mode=KeyframeMode.OCR_IMAGE,
             ocr_paths=ocr_paths, video_meta=meta,
         )
-        logger.info("ocr_image_mode result:\n%s", result)
+        logger.info("OCR_IMAGE mode output:\n%s", result)
         assert "[KEYFRAME: /tmp/frame1.png]" in result
         assert "[OCR: /tmp/ocr/frame_0000_ocr.txt]" in result
         assert "<transcript>" in result
@@ -244,7 +226,7 @@ class TestBuildInterleavedTranscript:
             transcript, keyframes, mode=KeyframeMode.OCR_INLINE,
             ocr_results=ocr_results, video_meta=meta,
         )
-        logger.info("ocr_inline_mode result:\n%s", result)
+        logger.info("OCR_INLINE mode output:\n%s", result)
         assert "[KEYFRAME:" not in result
         assert "<transcript>" in result
         assert "<ocr_text>" in result
@@ -275,7 +257,7 @@ class TestBuildInterleavedTranscript:
             transcript, keyframes, mode=KeyframeMode.OCR_INLINE_IMAGE,
             ocr_results=ocr_results, video_meta=meta,
         )
-        logger.info("ocr_inline_image_mode result:\n%s", result)
+        logger.info("OCR_INLINE_IMAGE mode output:\n%s", result)
         assert "[KEYFRAME: /tmp/frame1.png]" in result
         assert "<transcript>" in result
         assert "<ocr_text>" in result
@@ -331,7 +313,7 @@ class TestBuildInterleavedTranscript:
         result = _build_interleaved_transcript(
             transcript, keyframes, video_meta=meta,
         )
-        logger.info("first_starts_zero result:\n%s", result)
+        logger.info("First keyframe range output:\n%s", result)
         assert "[0:00 - 0:02]" in result
         assert "[0:02 - 0:10]" in result
 
@@ -354,14 +336,14 @@ class TestBuildInterleavedTranscript:
         result = _build_interleaved_transcript(
             transcript, keyframes, video_meta=meta,
         )
-        logger.info("last_ends_duration result:\n%s", result)
+        logger.info("Last keyframe range output:\n%s", result)
         assert "[0:00 - 2:00]" in result
 
     def test_no_segments_fallback(self):
         """No segments returns raw text."""
         transcript = TranscriptResult(text="plain text only", segments=[], source="captions")
         result = _build_interleaved_transcript(transcript, [])
-        logger.info("no_segments_fallback result: %s", result)
+        logger.info("No segments fallback: raw text returned as-is")
         assert result == "plain text only"
 
     def test_duration_fallback_to_last_segment(self):
@@ -380,7 +362,7 @@ class TestBuildInterleavedTranscript:
             KeyFrame(timestamp=0.0, image_path=Path("/tmp/frame1.png")),
         ]
         result = _build_interleaved_transcript(transcript, keyframes)
-        logger.info("no_duration result:\n%s", result)
+        logger.info("No duration -> falls back to last segment end:\n%s", result)
         assert "[0:00 - 0:06]" in result
 
 

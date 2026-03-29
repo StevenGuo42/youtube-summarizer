@@ -83,7 +83,7 @@ def test_save_ocr_results(tmp_path):
     assert paths[1].read_text() == "Second frame"
     assert paths[0].name == "frame_0000_ocr.txt"
     assert paths[1].name == "frame_0001_ocr.txt"
-    logger.info("Saved OCR files: %s", [str(p) for p in paths])
+    logger.info("Saved %d OCR files: %s", len(paths), [p.name for p in paths])
 
 
 def test_save_ocr_results_empty_text(tmp_path):
@@ -102,4 +102,4 @@ def test_save_ocr_results_empty_text(tmp_path):
     # Only 2 files should exist
     ocr_dir = tmp_path / "ocr"
     assert len(list(ocr_dir.glob("*.txt"))) == 2
-    logger.info("Paths with None for empty: %s", paths)
+    logger.info("OCR paths (None=empty text): %s", [p.name if p else None for p in paths])
