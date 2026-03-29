@@ -10,7 +10,7 @@ YouTube Video Summarizer — self-hosted web app that summarizes YouTube videos 
 
 Python 3.14 + uv, FastAPI + uvicorn, vanilla HTML/JS + Pico CSS, SQLite (aiosqlite), yt-dlp (+yt-dlp-ejs), ffmpeg, Claude Agent SDK (LLM). Node.js required (via nvm) for yt-dlp YouTube JS challenge solving. NVIDIA RTX 5060 (8GB VRAM) — be careful with VRAM usage.
 
-Always use  `uv` to install libraries. 
+Always use  `uv` to install libraries. Do NOT put design docs on git.
 
 ## Commands
 
