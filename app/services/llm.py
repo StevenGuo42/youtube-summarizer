@@ -158,36 +158,53 @@ def _build_interleaved_transcript(
     keyframes: list[KeyFrame],
     mode: KeyframeMode = KeyframeMode.IMAGE,
     ocr_paths: list[Path | None] | None = None,
+    video_meta: dict | None = None,
+    ocr_results: list | None = None,
 ) -> str:
-    """Build transcript grouped by keyframe boundaries.
+    """Build transcript grouped by keyframe boundaries with XML tags.
 
-    Output format depends on mode:
-    - IMAGE: [KEYFRAME: path.png] headers (current default)
-    - OCR: [OCR: path.txt] headers (text files for Claude to read)
-    - OCR_IMAGE: both [KEYFRAME:] and [OCR:] headers
-    - OCR_INLINE / OCR_INLINE_IMAGE: OCR already injected into transcript segments;
-      OCR_INLINE passes no keyframes, OCR_INLINE_IMAGE passes keyframes for IMAGE headers
-    - NONE: plain transcript, no keyframe markers
+    Format per block:
+        [start - end]
+        [KEYFRAME: path.png]      (if mode includes images)
+        [OCR: path.txt]           (if mode includes OCR files)
+        <transcript>
+        merged text...
+        </transcript>
+        <ocr_text>                (if mode includes inline OCR)
+        ocr text...
+        </ocr_text>
     """
     if not transcript.segments:
         return transcript.text
 
     if not keyframes or mode == KeyframeMode.NONE:
-        return _merge_segments(transcript.segments)
+        text = _merge_segments(transcript.segments)
+        return f"<transcript>\n{text}\n</transcript>"
+
+    # Determine video end time for last keyframe range
+    duration = None
+    if video_meta:
+        duration = video_meta.get("duration")
+    if duration is None and transcript.segments:
+        duration = transcript.segments[-1].end
 
     # Sort keyframes by timestamp
     sorted_kf = sorted(keyframes, key=lambda kf: kf.timestamp)
 
-    # Build a mapping from keyframe to its OCR path
-    kf_ocr: dict[int, Path | None] = {}
+    # Build mappings from sorted index to OCR path / OCR result
+    kf_to_idx = {id(kf): i for i, kf in enumerate(keyframes)}
+    kf_ocr_paths: dict[int, Path | None] = {}
+    kf_ocr_results: dict[int, object] = {}
     if ocr_paths:
-        # ocr_paths is parallel to the original keyframes list;
-        # build index mapping from sorted position to ocr path
-        kf_to_idx = {id(kf): i for i, kf in enumerate(keyframes)}
         for i, kf in enumerate(sorted_kf):
             orig_idx = kf_to_idx[id(kf)]
             if orig_idx < len(ocr_paths):
-                kf_ocr[i] = ocr_paths[orig_idx]
+                kf_ocr_paths[i] = ocr_paths[orig_idx]
+    if ocr_results:
+        for i, kf in enumerate(sorted_kf):
+            orig_idx = kf_to_idx[id(kf)]
+            if orig_idx < len(ocr_results):
+                kf_ocr_results[i] = ocr_results[orig_idx]
 
     # Assign each segment to a keyframe group
     groups: list[tuple[int | None, KeyFrame | None, list]] = []
@@ -208,37 +225,68 @@ def _build_interleaved_transcript(
         groups.append((kf_idx, sorted_kf[kf_idx], []))
         kf_idx += 1
 
-    # Build output
+    # Compute timestamp ranges
+    all_starts = []
+    if pre_segments:
+        all_starts.append(0.0)
+    for _, kf, _ in groups:
+        all_starts.append(kf.timestamp if kf else 0.0)
+
+    all_ends = []
+    if pre_segments:
+        all_ends.append(sorted_kf[0].timestamp if sorted_kf else (duration or 0))
+    for g_idx, (_, kf, _) in enumerate(groups):
+        if g_idx + 1 < len(groups):
+            all_ends.append(groups[g_idx + 1][1].timestamp)
+        else:
+            all_ends.append(duration or (kf.timestamp if kf else 0))
+
+    # Build output blocks
     blocks = []
+    block_idx = 0
 
     if pre_segments:
-        blocks.append(_merge_segments(pre_segments))
+        start_ts = _format_timestamp(all_starts[block_idx])
+        end_ts = _format_timestamp(all_ends[block_idx])
+        text = _merge_segments(pre_segments)
+        block_lines = [f"[{start_ts} - {end_ts}]"]
+        block_lines.append(f"<transcript>\n{text}\n</transcript>")
+        blocks.append("\n".join(block_lines))
+        block_idx += 1
 
     for idx, kf, segments in groups:
-        block_lines = []
+        start_ts = _format_timestamp(all_starts[block_idx])
+        end_ts = _format_timestamp(all_ends[block_idx])
+        block_lines = [f"[{start_ts} - {end_ts}]"]
+
         if kf:
             if mode in (KeyframeMode.IMAGE, KeyframeMode.OCR_IMAGE, KeyframeMode.OCR_INLINE_IMAGE):
                 block_lines.append(f"[KEYFRAME: {kf.image_path}]")
             if mode in (KeyframeMode.OCR, KeyframeMode.OCR_IMAGE):
-                ocr_path = kf_ocr.get(idx)
+                ocr_path = kf_ocr_paths.get(idx)
                 if ocr_path:
                     block_lines.append(f"[OCR: {ocr_path}]")
+
         if segments:
-            block_lines.append(_merge_segments(segments))
-        if block_lines:
-            blocks.append("\n".join(block_lines))
+            text = _merge_segments(segments)
+            block_lines.append(f"<transcript>\n{text}\n</transcript>")
+
+        if mode in (KeyframeMode.OCR_INLINE, KeyframeMode.OCR_INLINE_IMAGE):
+            ocr_r = kf_ocr_results.get(idx)
+            if ocr_r and ocr_r.text:
+                block_lines.append(f"<ocr_text>\n{ocr_r.text}\n</ocr_text>")
+
+        blocks.append("\n".join(block_lines))
+        block_idx += 1
 
     return "\n\n".join(blocks)
 
 
 def _merge_segments(segments: list) -> str:
-    """Merge consecutive transcript segments into a single timestamped line."""
+    """Merge consecutive transcript segments into plain text."""
     if not segments:
         return ""
-    start = _format_timestamp(segments[0].start)
-    end = _format_timestamp(segments[-1].end)
-    text = " ".join(seg.text for seg in segments)
-    return f"[{start} - {end}] {text}"
+    return " ".join(seg.text for seg in segments)
 
 
 async def _run_query(prompt: str, options: ClaudeAgentOptions) -> str:
