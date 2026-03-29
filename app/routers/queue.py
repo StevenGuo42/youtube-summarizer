@@ -12,6 +12,8 @@ router = APIRouter()
 
 class QueueRequest(BaseModel):
     video_ids: list[str]
+    dedup_mode: str = "regular"
+    keyframe_mode: str = "image"
 
 
 @router.post("")
@@ -30,8 +32,9 @@ async def add_to_queue(req: QueueRequest):
         db = await get_db()
         try:
             await db.execute(
-                """INSERT INTO jobs (id, video_id, title, channel, duration, thumbnail_url, status)
-                   VALUES (?, ?, ?, ?, ?, ?, 'pending')""",
+                """INSERT INTO jobs (id, video_id, title, channel, duration, thumbnail_url,
+                                    dedup_mode, keyframe_mode, status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
                 (
                     job_id,
                     video_id,
@@ -39,6 +42,8 @@ async def add_to_queue(req: QueueRequest):
                     info.get("channel"),
                     info.get("duration"),
                     info.get("thumbnail"),
+                    req.dedup_mode,
+                    req.keyframe_mode,
                 ),
             )
             await db.commit()
