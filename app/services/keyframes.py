@@ -105,7 +105,7 @@ def deduplicate_keyframes(
         else:
             return _dedup_by_ocr(keyframes, ocr_results)
 
-    threshold = 2 if mode == "slides" else 5
+    threshold = 1 if mode == "slides" else 5
     deduped = _dedup_by_phash(keyframes, threshold=threshold)
 
     # Filter ocr_results to match deduped keyframes if present
