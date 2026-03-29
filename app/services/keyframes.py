@@ -85,7 +85,7 @@ def deduplicate_keyframes(
 
     Modes:
     - "regular": pHash with hamming distance > 5 (good for most videos)
-    - "slides": pHash with hamming distance > 2 (stricter, keeps more frames for presentations)
+    - "slides": SSIM < 0.95 (structural similarity, better for presentations with text changes)
     - "ocr": fuzzy OCR text match (SequenceMatcher ratio <= 0.85). Requires ocr_results.
     - "none": no dedup, return as-is
 
@@ -105,8 +105,10 @@ def deduplicate_keyframes(
         else:
             return _dedup_by_ocr(keyframes, ocr_results)
 
-    threshold = 1 if mode == "slides" else 5
-    deduped = _dedup_by_phash(keyframes, threshold=threshold)
+    if mode == "slides":
+        deduped = _dedup_by_ssim(keyframes)
+    else:
+        deduped = _dedup_by_phash(keyframes)
 
     # Filter ocr_results to match deduped keyframes if present
     if ocr_results is not None:
@@ -150,6 +152,40 @@ def _dedup_by_ocr(
 
     logger.info("OCR dedup: %d -> %d keyframes", len(keyframes), len(keep_kf))
     return keep_kf, keep_ocr
+
+
+def _dedup_by_ssim(keyframes: list[KeyFrame], threshold: float = 0.95) -> list[KeyFrame]:
+    """Group consecutive keyframes by structural similarity. Keeps last per group.
+
+    SSIM is better than pHash for presentations — it detects text changes
+    that pHash misses. Threshold 0.95 means frames with SSIM >= 0.95 are
+    considered the same (grouped), frames below are kept as distinct.
+    """
+    import numpy as np
+    from PIL import Image
+    from skimage.metrics import structural_similarity as ssim
+
+    # Load and convert to grayscale, resize for speed
+    def _load(kf):
+        return np.array(Image.open(kf.image_path).convert("L").resize((256, 256)))
+
+    imgs = [_load(kf) for kf in keyframes]
+
+    groups: list[list[int]] = [[0]]
+    rep_idx = 0
+
+    for i in range(1, len(keyframes)):
+        score = ssim(imgs[rep_idx], imgs[i])
+        if score < threshold:
+            groups.append([i])  # different enough — new group
+            rep_idx = i
+        else:
+            groups[-1].append(i)  # similar — same group
+
+    keep = [keyframes[g[-1]] for g in groups]
+
+    logger.info("SSIM dedup (threshold=%.2f): %d -> %d keyframes", threshold, len(keyframes), len(keep))
+    return keep
 
 
 def _dedup_by_phash(keyframes: list[KeyFrame], threshold: int = 5) -> list[KeyFrame]:

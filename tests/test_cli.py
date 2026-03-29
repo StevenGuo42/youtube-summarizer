@@ -279,20 +279,22 @@ class TestDeduplicateKeyframes:
         assert len(deduped) == 3
         assert len(ocr_out) == 3
 
-    def test_slides_mode_stricter(self, tmp_path):
-        """Slides mode uses threshold 2, keeps more frames than regular."""
+    def test_slides_mode_uses_ssim(self, tmp_path):
+        """Slides mode uses SSIM — detects small structural changes that pHash misses."""
         import numpy as np
         from PIL import Image
 
-        # Create images with small pHash distance (between 2 and 5)
-        base = np.zeros((100, 100, 3), dtype=np.uint8)
-        for i in range(100):
-            base[:, i] = [int(255 * i / 99), 0, int(255 * (99 - i) / 99)]
+        # Create a base image and one with a small text-like change
+        # SSIM will detect this, pHash may not
+        base = np.zeros((256, 256, 3), dtype=np.uint8)
+        for i in range(256):
+            base[:, i] = [int(255 * i / 255), 50, int(255 * (255 - i) / 255)]
+
+        # Add a "text block" change — small but structurally different
+        modified = base.copy()
+        modified[100:130, 50:200] = [255, 255, 255]  # white text area
 
         img_a = Image.fromarray(base)
-        # Slightly modify — add a small patch
-        modified = base.copy()
-        modified[40:60, 40:60] = [255, 255, 0]
         img_b = Image.fromarray(modified)
 
         path_a = tmp_path / "a.png"
@@ -305,28 +307,13 @@ class TestDeduplicateKeyframes:
             KeyFrame(timestamp=1.0, image_path=path_b),
         ]
 
-        # Check if these are actually close enough for the test to be meaningful
-        import imagehash
-        h_a = imagehash.phash(img_a)
-        h_b = imagehash.phash(img_b)
-        dist = h_a - h_b
+        # Slides (SSIM) should detect this change
+        deduped_slides, _ = deduplicate_keyframes(keyframes, mode="slides")
+        assert len(deduped_slides) == 2, "SSIM should detect the text block change"
 
-        if dist <= 2:
-            # Too similar even for slides — both modes would dedup
-            # Just verify slides mode runs without error
-            deduped_slides, _ = deduplicate_keyframes(keyframes, mode="slides")
-            deduped_regular, _ = deduplicate_keyframes(keyframes, mode="regular")
-            assert len(deduped_slides) <= len(deduped_regular) or len(deduped_slides) >= len(deduped_regular)
-        elif dist <= 5:
-            # In the sweet spot: regular dedupes, slides keeps both
-            deduped_regular, _ = deduplicate_keyframes(keyframes, mode="regular")
-            deduped_slides, _ = deduplicate_keyframes(keyframes, mode="slides")
-            assert len(deduped_regular) == 1  # grouped by regular
-            assert len(deduped_slides) == 2   # kept by slides
-        else:
-            # Too different — both modes keep both
-            deduped_slides, _ = deduplicate_keyframes(keyframes, mode="slides")
-            assert len(deduped_slides) == 2
+        # Regular (pHash) may or may not detect it depending on hash sensitivity
+        deduped_regular, _ = deduplicate_keyframes(keyframes, mode="regular")
+        # Just verify it runs — pHash behavior depends on the exact images
 
     def test_none_mode_no_dedup(self, tmp_path):
         """None mode returns all keyframes unchanged."""
