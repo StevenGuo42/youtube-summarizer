@@ -21,6 +21,9 @@ async def init_db():
                 status TEXT NOT NULL DEFAULT 'pending',
                 current_step TEXT,
                 error TEXT,
+                dedup_mode TEXT DEFAULT 'regular',
+                keyframe_mode TEXT DEFAULT 'image',
+                warnings TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -42,4 +45,23 @@ async def init_db():
                 api_base_url TEXT,
                 custom_prompt TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS worker_settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                processing_mode TEXT DEFAULT 'sequential',
+                batch_size INTEGER DEFAULT 5
+            );
         """)
+
+        # Migrations for existing databases
+        for col, default in [
+            ("dedup_mode", "'regular'"),
+            ("keyframe_mode", "'image'"),
+            ("warnings", "NULL"),
+        ]:
+            try:
+                await db.execute(f"ALTER TABLE jobs ADD COLUMN {col} TEXT DEFAULT {default}")
+            except Exception:
+                pass  # Column already exists
+
+        await db.commit()

@@ -73,3 +73,25 @@ async def test_pipeline_public_video():
     assert structured["title"]
     assert structured["tldr"]
     assert structured["summary"]
+
+
+@pytest.mark.asyncio
+async def test_db_schema_has_new_columns():
+    """Verify jobs table has dedup_mode, keyframe_mode, warnings columns
+    and worker_settings table exists."""
+    db = await get_db()
+    try:
+        # Check jobs columns
+        cursor = await db.execute("PRAGMA table_info(jobs)")
+        columns = {row[1] for row in await cursor.fetchall()}
+        assert "dedup_mode" in columns
+        assert "keyframe_mode" in columns
+        assert "warnings" in columns
+
+        # Check worker_settings table
+        cursor = await db.execute("PRAGMA table_info(worker_settings)")
+        ws_columns = {row[1] for row in await cursor.fetchall()}
+        assert "processing_mode" in ws_columns
+        assert "batch_size" in ws_columns
+    finally:
+        await db.close()
