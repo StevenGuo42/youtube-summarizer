@@ -131,6 +131,7 @@ GET    /api/channel/search?q=<query>          Search channels by name
 GET    /api/channel/<id>/videos               List videos for a channel
          ?members_only=true                   Filter to members-only
          ?page=1&per_page=20                  Pagination
+         ?date_from=YYYYMMDD&date_to=YYYYMMDD Date range filter
 GET    /api/playlist/<id>/videos              List videos in a playlist
 GET    /api/video/info?url=<url>              Get metadata for a single video URL
 ```
@@ -176,7 +177,8 @@ Single-page app with tab-based navigation. Uses Pico CSS for base styling — wr
 - **Input section at top:**
   - Text input for YouTube URL (video, channel, or playlist).
   - "Fetch" button to load videos.
-  - Toggle: "Members Only" filter.
+  - Filter: "All" / "Public" / "Members Only" for video visibility.
+  - Date range picker: filter videos by upload date (from / to).
 - **Video list:**
   - Displays video thumbnails, titles, duration, upload date.
   - Checkboxes for multi-select.
