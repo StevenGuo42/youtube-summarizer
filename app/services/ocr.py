@@ -57,13 +57,27 @@ def _load_model():
     return model, gpu
 
 
-def _run_ocr(keyframes: list[KeyFrame]) -> list[OcrResult]:
+def load_model():
+    """Load chandra-ocr-2 model. Returns (model, gpu) tuple.
+
+    Caller is responsible for cleanup:
+        del model; gc.collect(); torch.cuda.empty_cache()
+    """
+    return _load_model()
+
+
+def _run_ocr(keyframes: list[KeyFrame], model_tuple=None) -> list[OcrResult]:
     """Load model, run OCR on all keyframes, release model."""
     from chandra.model.hf import generate_hf
     from chandra.model.schema import BatchInputItem
     from chandra.output import parse_markdown
 
-    model, gpu = _load_model()
+    if model_tuple:
+        model, gpu = model_tuple
+        owns_model = False
+    else:
+        model, gpu = _load_model()
+        owns_model = True
     try:
         results = []
         for kf in keyframes:
@@ -88,10 +102,11 @@ def _run_ocr(keyframes: list[KeyFrame]) -> list[OcrResult]:
                 ))
         return results
     finally:
-        del model
-        gc.collect()
-        if gpu:
-            torch.cuda.empty_cache()
+        if owns_model:
+            del model
+            gc.collect()
+            if gpu:
+                torch.cuda.empty_cache()
 
 
 def save_ocr_results(ocr_results: list[OcrResult], work_dir: Path) -> list[Path | None]:
@@ -115,13 +130,13 @@ def save_ocr_results(ocr_results: list[OcrResult], work_dir: Path) -> list[Path 
     return paths
 
 
-async def extract_text(keyframes: list[KeyFrame]) -> list[OcrResult]:
+async def extract_text(keyframes: list[KeyFrame], model_tuple=None) -> list[OcrResult]:
     """Run OCR on keyframe images using chandra-ocr-2."""
     if not keyframes:
         return []
 
     logger.info("Running OCR on %d keyframes", len(keyframes))
-    results = await asyncio.to_thread(_run_ocr, keyframes)
+    results = await asyncio.to_thread(_run_ocr, keyframes, model_tuple)
     ocr_count = sum(1 for r in results if r.text)
     logger.info("OCR complete: %d/%d keyframes had text", ocr_count, len(results))
     return results
