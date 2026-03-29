@@ -8,6 +8,7 @@ import pytest
 
 from app.config import TMP_DIR
 from app.database import init_db
+from app.services.keyframes import KeyFrame, deduplicate_keyframes
 from app.services.transcript import Segment, TranscriptResult, inject_ocr_into_transcript
 from app.services.ocr import OcrResult
 from cli import extract_video_id, run, parse_args
@@ -246,3 +247,146 @@ class TestInjectOcrIntoTranscript:
         result = inject_ocr_into_transcript(transcript, [])
         assert len(result.segments) == 1
         assert result.segments[0].text == "hello"
+
+
+class TestDeduplicateKeyframes:
+    @staticmethod
+    def _make_gradient(axis: str, start: tuple, end: tuple) -> "Image.Image":
+        """Create a gradient image with actual spatial variation (solid colors are not pHash-distinguishable)."""
+        import numpy as np
+        from PIL import Image
+
+        arr = np.zeros((100, 100, 3), dtype=np.uint8)
+        for i in range(100):
+            t = i / 99
+            color = [int(start[j] * (1 - t) + end[j] * t) for j in range(3)]
+            if axis == "x":
+                arr[:, i] = color
+            else:
+                arr[i, :] = color
+        return Image.fromarray(arr)
+
+    @staticmethod
+    def _make_checkerboard(n: int) -> "Image.Image":
+        """Create a checkerboard image."""
+        import numpy as np
+        from PIL import Image
+
+        arr = np.zeros((100, 100, 3), dtype=np.uint8)
+        for y in range(100):
+            for x in range(100):
+                if (x // n + y // n) % 2 == 0:
+                    arr[y, x] = [255, 255, 255]
+        return Image.fromarray(arr)
+
+    def test_phash_groups_identical_images(self, tmp_path):
+        """Identical images are grouped, only first kept.
+
+        Note: pHash on solid-color images is degenerate (all map to the same hash).
+        Use gradient images with real spatial variation instead.
+        img_a and img_b are identical horizontal gradients (distance=0, <= 5 => grouped).
+        img_c is a vertical gradient (distance > 5 from img_a => kept).
+        """
+        img_a = self._make_gradient("x", (255, 0, 0), (0, 0, 255))   # red->blue horiz
+        img_b = self._make_gradient("x", (255, 0, 0), (0, 0, 255))   # identical copy
+        img_c = self._make_gradient("y", (0, 255, 0), (255, 0, 255)) # green->magenta vert
+        path_a = tmp_path / "a.png"
+        path_b = tmp_path / "b.png"
+        path_c = tmp_path / "c.png"
+        img_a.save(path_a)
+        img_b.save(path_b)
+        img_c.save(path_c)
+
+        keyframes = [
+            KeyFrame(timestamp=0.0, image_path=path_a),
+            KeyFrame(timestamp=1.0, image_path=path_b),
+            KeyFrame(timestamp=2.0, image_path=path_c),
+        ]
+        deduped, ocr_out = deduplicate_keyframes(keyframes)
+
+        assert len(deduped) == 2
+        assert deduped[0].timestamp == 0.0
+        assert deduped[1].timestamp == 2.0
+        assert ocr_out is None
+
+    def test_phash_all_unique(self, tmp_path):
+        """All unique images are preserved.
+
+        Uses three visually distinct gradient/pattern images with pairwise pHash distance > 5.
+        """
+        img_a = self._make_gradient("x", (255, 0, 0), (0, 0, 255))   # red->blue horiz
+        img_b = self._make_gradient("y", (0, 255, 0), (255, 0, 255)) # green->magenta vert
+        img_c = self._make_checkerboard(10)                            # checkerboard
+        keyframes = []
+        for i, (img, name) in enumerate([(img_a, "a"), (img_b, "b"), (img_c, "c")]):
+            path = tmp_path / f"{name}.png"
+            img.save(path)
+            keyframes.append(KeyFrame(timestamp=float(i), image_path=path))
+
+        deduped, _ = deduplicate_keyframes(keyframes)
+        assert len(deduped) == 3
+
+    def test_phash_all_identical(self, tmp_path):
+        """All identical images collapse to one."""
+        img_template = self._make_gradient("x", (255, 0, 0), (0, 0, 255))
+
+        keyframes = []
+        for i in range(5):
+            path = tmp_path / f"frame_{i}.png"
+            img_template.save(path)
+            keyframes.append(KeyFrame(timestamp=float(i), image_path=path))
+
+        deduped, _ = deduplicate_keyframes(keyframes)
+        assert len(deduped) == 1
+        assert deduped[0].timestamp == 0.0
+
+    def test_ocr_fuzzy_groups_similar_text(self):
+        """OCR results with similar text are grouped."""
+        keyframes = [
+            KeyFrame(timestamp=0.0, image_path=Path("/tmp/a.png")),
+            KeyFrame(timestamp=1.0, image_path=Path("/tmp/b.png")),
+            KeyFrame(timestamp=2.0, image_path=Path("/tmp/c.png")),
+        ]
+        ocr_results = [
+            OcrResult(timestamp=0.0, image_path=Path("/tmp/a.png"), text="S&P 500 Index"),
+            OcrResult(timestamp=1.0, image_path=Path("/tmp/b.png"), text="S&P 500 Index "),
+            OcrResult(timestamp=2.0, image_path=Path("/tmp/c.png"), text="Dow Jones Industrial"),
+        ]
+        deduped, ocr_out = deduplicate_keyframes(keyframes, ocr_results=ocr_results)
+
+        assert len(deduped) == 2
+        assert deduped[0].timestamp == 0.0
+        assert deduped[1].timestamp == 2.0
+        assert len(ocr_out) == 2
+        assert ocr_out[0].text == "S&P 500 Index"
+        assert ocr_out[1].text == "Dow Jones Industrial"
+
+    def test_ocr_empty_text_not_grouped(self):
+        """Keyframes with empty OCR text are each kept as unique."""
+        keyframes = [
+            KeyFrame(timestamp=0.0, image_path=Path("/tmp/a.png")),
+            KeyFrame(timestamp=1.0, image_path=Path("/tmp/b.png")),
+            KeyFrame(timestamp=2.0, image_path=Path("/tmp/c.png")),
+        ]
+        ocr_results = [
+            OcrResult(timestamp=0.0, image_path=Path("/tmp/a.png"), text=""),
+            OcrResult(timestamp=1.0, image_path=Path("/tmp/b.png"), text=""),
+            OcrResult(timestamp=2.0, image_path=Path("/tmp/c.png"), text="Some text"),
+        ]
+        deduped, ocr_out = deduplicate_keyframes(keyframes, ocr_results=ocr_results)
+
+        assert len(deduped) == 3
+        assert len(ocr_out) == 3
+
+    def test_empty_input(self):
+        """Empty keyframes returns empty."""
+        deduped, ocr_out = deduplicate_keyframes([])
+        assert deduped == []
+        assert ocr_out is None
+
+    def test_single_keyframe(self):
+        """Single keyframe is returned as-is."""
+        kf = KeyFrame(timestamp=0.0, image_path=Path("/tmp/a.png"))
+        deduped, _ = deduplicate_keyframes([kf])
+        assert len(deduped) == 1
+        assert deduped[0] is kf
