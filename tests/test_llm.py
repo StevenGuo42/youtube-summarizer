@@ -691,10 +691,12 @@ async def test_summarize_all_modes(no_keyframes, ocr_flag, expected_mode):
             if r.text:
                 (output_dir / f"ocr_{i:04d}.txt").write_text(r.text, encoding="utf-8")
 
-    # Deduplicate keyframes
+    # Deduplicate keyframes (pHash first, OCR only on deduped frames)
     if kf_for_summarize:
         from app.services.keyframes import deduplicate_keyframes
-        kf_for_summarize, ocr_results = deduplicate_keyframes(kf_for_summarize, ocr_results=ocr_results)
+        kf_for_summarize, ocr_results = deduplicate_keyframes(
+            kf_for_summarize, ocr_results=ocr_results, mode="regular",
+        )
         logger.info("After dedup: %d keyframes", len(kf_for_summarize))
 
     # Save OCR files for file-based modes (after dedup)
