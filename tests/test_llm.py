@@ -545,3 +545,145 @@ async def test_summarize_with_keyframes():
     assert result.title
     assert result.tldr
     assert result.summary
+
+
+# --- Mode combination matrix (all 6 keyframe modes with real data) ---
+
+# Maps (no_keyframes, ocr) CLI flag combos to their expected mode
+_MODE_COMBOS = [
+    (False, "none",   KeyframeMode.IMAGE),
+    (False, "file",   KeyframeMode.OCR_IMAGE),
+    (False, "inline", KeyframeMode.OCR_INLINE_IMAGE),
+    (True,  "none",   KeyframeMode.NONE),
+    (True,  "file",   KeyframeMode.OCR),
+    (True,  "inline", KeyframeMode.OCR_INLINE),
+]
+
+
+async def _load_test_data():
+    """Load transcript + keyframes from members-only test artifacts."""
+    from pathlib import Path
+
+    from app.config import TMP_DIR
+    from app.services.transcript import _transcribe_whisper
+
+    transcript_dir = TMP_DIR / "test_members_transcript"
+    keyframes_dir = TMP_DIR / "test_members_keyframes" / "frames"
+
+    if not transcript_dir.exists() or not keyframes_dir.exists():
+        pytest.skip("Run test_transcript and test_keyframes members-only tests first")
+
+    audio_path = transcript_dir / "CMCNg8B6tA0.m4a"
+    if not audio_path.exists():
+        pytest.skip("Members-only audio not downloaded")
+
+    transcript = await _transcribe_whisper(audio_path, transcript_dir)
+
+    frame_files = sorted(keyframes_dir.glob("*.png"))
+    if not frame_files:
+        pytest.skip("No keyframe files found")
+
+    # Use first 5 keyframes to keep OCR fast
+    frame_files = frame_files[:5]
+    interval = 120.0 / len(frame_files)
+    keyframes = [
+        KeyFrame(timestamp=i * interval, image_path=f)
+        for i, f in enumerate(frame_files)
+    ]
+
+    video_meta = {
+        "title": "标普 道指 纳指 罗素 指数 成分结构 特性和区别",
+        "channel": "视野环球财经",
+        "duration": 1644,
+    }
+
+    return transcript, keyframes, video_meta
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("no_keyframes,ocr_flag,expected_mode", _MODE_COMBOS,
+                         ids=[m.value for _, _, m in _MODE_COMBOS])
+async def test_summarize_all_modes(no_keyframes, ocr_flag, expected_mode):
+    """Test summarization with all 6 keyframe mode combinations using real data."""
+    from pathlib import Path
+
+    from app.config import TMP_DIR
+    from app.services.ocr import extract_text, save_ocr_results
+    from app.services.transcript import inject_ocr_into_transcript
+
+    status = await get_auth_status()
+    if not status.get("loggedIn"):
+        pytest.skip("Not logged in to Claude")
+
+    transcript, keyframes, video_meta = await _load_test_data()
+    mode = _resolve_keyframe_mode(no_keyframes, ocr_flag)
+    assert mode == expected_mode
+
+    output_dir = TMP_DIR / f"test_mode_{mode.value.replace('+', '_')}"
+    output_dir.mkdir(exist_ok=True)
+
+    logger.info("=== Testing mode: %s ===", mode.value)
+    logger.info("Flags: --no-keyframes=%s --ocr=%s", no_keyframes, ocr_flag)
+
+    # Determine what keyframes to pass to summarize
+    kf_for_summarize = keyframes
+    ocr_paths = None
+
+    # Run OCR if mode needs it
+    needs_ocr = mode in (
+        KeyframeMode.OCR, KeyframeMode.OCR_IMAGE,
+        KeyframeMode.OCR_INLINE, KeyframeMode.OCR_INLINE_IMAGE,
+    )
+    if needs_ocr:
+        logger.info("Running OCR on %d keyframes...", len(keyframes))
+        ocr_results = await extract_text(keyframes)
+        ocr_count = sum(1 for r in ocr_results if r.text)
+        logger.info("OCR extracted text from %d/%d keyframes", ocr_count, len(ocr_results))
+
+        # Save OCR text for inspection regardless of mode
+        for i, r in enumerate(ocr_results):
+            if r.text:
+                (output_dir / f"ocr_{i:04d}.txt").write_text(r.text, encoding="utf-8")
+
+        if mode in (KeyframeMode.OCR, KeyframeMode.OCR_IMAGE):
+            ocr_paths = save_ocr_results(ocr_results, output_dir)
+            logger.info("Saved %d OCR files", sum(1 for p in ocr_paths if p))
+
+        if mode in (KeyframeMode.OCR_INLINE, KeyframeMode.OCR_INLINE_IMAGE):
+            transcript = inject_ocr_into_transcript(transcript, ocr_results)
+            logger.info("Injected OCR: %d total segments", len(transcript.segments))
+
+    # For NONE mode, pass no keyframes
+    if mode == KeyframeMode.NONE:
+        kf_for_summarize = []
+
+    # Save the transcript that will be sent
+    transcript_text = _build_interleaved_transcript(
+        transcript, kf_for_summarize, mode=mode, ocr_paths=ocr_paths,
+    )
+    (output_dir / "transcript_prompt.txt").write_text(transcript_text, encoding="utf-8")
+    logger.info("Transcript prompt saved (%d chars)", len(transcript_text))
+
+    # Summarize
+    result = await summarize(
+        transcript=transcript,
+        keyframes=kf_for_summarize,
+        video_meta=video_meta,
+        keyframe_mode=mode,
+        ocr_paths=ocr_paths,
+    )
+
+    # Save outputs
+    (output_dir / "summary.md").write_text(
+        f"# {result.title}\n\n**TL;DR:** {result.tldr}\n\n{result.summary}",
+        encoding="utf-8",
+    )
+    (output_dir / "raw_response.txt").write_text(result.raw_response, encoding="utf-8")
+    logger.info("Mode %s — Title: %s", mode.value, result.title)
+    logger.info("Mode %s — TLDR: %s", mode.value, result.tldr)
+    logger.info("Mode %s — Summary (%d chars): %s", mode.value, len(result.summary), result.summary[:300])
+    logger.info("Outputs saved to %s", output_dir)
+
+    assert isinstance(result, SummaryResult)
+    assert result.raw_response
+    assert result.title or result.summary, f"Mode {mode.value} produced no output"
