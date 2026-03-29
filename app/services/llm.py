@@ -104,6 +104,7 @@ async def summarize(
     model: str | None = None,
     keyframe_mode: KeyframeMode = KeyframeMode.IMAGE,
     ocr_paths: list[Path | None] | None = None,
+    ocr_results: list | None = None,
 ) -> SummaryResult:
     """Summarize a video using Claude via the Agent SDK."""
     settings = await get_llm_settings()
@@ -122,6 +123,7 @@ async def summarize(
     # Interleave keyframes into the timestamped transcript
     parts.append(_build_interleaved_transcript(
         transcript, keyframes, mode=keyframe_mode, ocr_paths=ocr_paths,
+        video_meta=video_meta, ocr_results=ocr_results,
     ))
 
     user_prompt = "\n".join(parts)

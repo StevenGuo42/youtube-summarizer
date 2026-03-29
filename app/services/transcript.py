@@ -26,40 +26,6 @@ class TranscriptResult:
     source: str = ""  # "captions" or "whisper"
 
 
-def inject_ocr_into_transcript(
-    transcript: TranscriptResult,
-    ocr_results: list,
-) -> TranscriptResult:
-    """Create a new TranscriptResult with OCR text inserted as segments.
-
-    Each non-empty OCR result becomes a zero-duration segment at its timestamp
-    with text formatted as [OCR TEXT: ...]. Segments are sorted by start time.
-    """
-    if not ocr_results:
-        return TranscriptResult(
-            text=transcript.text,
-            segments=list(transcript.segments),
-            source=transcript.source,
-        )
-
-    # Build OCR segments
-    ocr_segments = []
-    for r in ocr_results:
-        if not r.text:
-            continue
-        ocr_segments.append(Segment(
-            start=r.timestamp,
-            end=r.timestamp,
-            text=f"[OCR TEXT: {r.text}]",
-        ))
-
-    # Merge and sort by start time (stable sort preserves original order for ties)
-    merged = list(transcript.segments) + ocr_segments
-    merged.sort(key=lambda s: s.start)
-
-    text = " ".join(s.text for s in merged)
-    return TranscriptResult(text=text, segments=merged, source=transcript.source)
-
 
 async def extract_transcript(
     video_id: str, video_path: Path | None, work_dir: Path
