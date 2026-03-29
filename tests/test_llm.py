@@ -600,62 +600,41 @@ _MODE_COMBOS = [
 
 
 async def _load_test_data():
-    """Load transcript + keyframes from members-only test artifacts.
+    """Load transcript + keyframes from 5-minute members-only test clip.
 
-    Uses the video file duration (120s) as the source of truth since
-    keyframes were extracted from the video. The audio/transcript may
-    cover the full 28-minute video, so we clip transcript segments to
-    the video duration for consistency.
+    Uses data/tmp/test_members_5min/ which has a 5-minute video clip
+    with pre-extracted keyframes (real timestamps from ffmpeg).
+    Transcript is generated via whisper from the video's audio.
     """
     from pathlib import Path
     import subprocess
 
     from app.config import TMP_DIR
+    from app.services.keyframes import extract_keyframes
     from app.services.transcript import _transcribe_whisper
 
-    transcript_dir = TMP_DIR / "test_members_transcript"
-    keyframes_dir = TMP_DIR / "test_members_keyframes"
-    frames_dir = keyframes_dir / "frames"
+    work_dir = TMP_DIR / "test_members_5min"
+    frames_dir = work_dir / "frames"
+    video_path = work_dir / "CMCNg8B6tA0.webm"
 
-    if not transcript_dir.exists() or not frames_dir.exists():
-        pytest.skip("Run test_transcript and test_keyframes members-only tests first")
-
-    audio_path = transcript_dir / "CMCNg8B6tA0.m4a"
-    if not audio_path.exists():
-        pytest.skip("Members-only audio not downloaded")
-
-    # Get video duration (keyframes were extracted from this file)
-    video_path = keyframes_dir / "CMCNg8B6tA0.mp4"
     if not video_path.exists():
-        pytest.skip("Members-only video not downloaded")
+        pytest.skip("5-minute test clip not downloaded (data/tmp/test_members_5min/)")
 
+    # Get video duration
     probe = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
          "-of", "default=noprint_wrappers=1:nokey=1", str(video_path)],
         capture_output=True, text=True,
     )
-    video_duration = float(probe.stdout.strip()) if probe.returncode == 0 else 120.0
+    video_duration = float(probe.stdout.strip()) if probe.returncode == 0 else 300.0
 
-    # Transcribe full audio, then clip to video duration
-    transcript = await _transcribe_whisper(audio_path, transcript_dir)
-    clipped_segments = [s for s in transcript.segments if s.start < video_duration]
-    transcript = TranscriptResult(
-        text=" ".join(s.text for s in clipped_segments),
-        segments=clipped_segments,
-        source=transcript.source,
-    )
-    logger.info("Clipped transcript to %.0fs: %d segments", video_duration, len(clipped_segments))
+    # Extract keyframes (with real timestamps from ffmpeg)
+    keyframes = await extract_keyframes(video_path, work_dir)
+    logger.info("Loaded %d keyframes from %s", len(keyframes), video_path.name)
 
-    frame_files = sorted(frames_dir.glob("*.png"))
-    if not frame_files:
-        pytest.skip("No keyframe files found")
-
-    # Assign timestamps using video duration (matches the extracted frames)
-    interval = video_duration / len(frame_files)
-    keyframes = [
-        KeyFrame(timestamp=i * interval, image_path=f)
-        for i, f in enumerate(frame_files)
-    ]
+    # Transcribe audio
+    transcript = await _transcribe_whisper(video_path, work_dir)
+    logger.info("Transcribed %d segments (%.0fs)", len(transcript.segments), video_duration)
 
     video_meta = {
         "title": "标普 道指 纳指 罗素 指数 成分结构 特性和区别",
