@@ -648,7 +648,6 @@ async def test_summarize_all_modes(no_keyframes, ocr_flag, expected_mode):
 
     from app.config import TMP_DIR
     from app.services.ocr import extract_text, save_ocr_results
-    from app.services.transcript import inject_ocr_into_transcript
 
     status = await get_auth_status()
     if not status.get("loggedIn"):
@@ -668,11 +667,12 @@ async def test_summarize_all_modes(no_keyframes, ocr_flag, expected_mode):
     kf_for_summarize = keyframes
     ocr_paths = None
 
-    # Run OCR if mode needs it
+    # Run OCR if needed
     needs_ocr = mode in (
         KeyframeMode.OCR, KeyframeMode.OCR_IMAGE,
         KeyframeMode.OCR_INLINE, KeyframeMode.OCR_INLINE_IMAGE,
     )
+    ocr_results = None
     if needs_ocr:
         logger.info("Running OCR on %d keyframes...", len(keyframes))
         ocr_results = await extract_text(keyframes)
@@ -684,13 +684,16 @@ async def test_summarize_all_modes(no_keyframes, ocr_flag, expected_mode):
             if r.text:
                 (output_dir / f"ocr_{i:04d}.txt").write_text(r.text, encoding="utf-8")
 
-        if mode in (KeyframeMode.OCR, KeyframeMode.OCR_IMAGE):
-            ocr_paths = save_ocr_results(ocr_results, output_dir)
-            logger.info("Saved %d OCR files", sum(1 for p in ocr_paths if p))
+    # Deduplicate keyframes
+    if kf_for_summarize:
+        from app.services.keyframes import deduplicate_keyframes
+        kf_for_summarize, ocr_results = deduplicate_keyframes(kf_for_summarize, ocr_results=ocr_results)
+        logger.info("After dedup: %d keyframes", len(kf_for_summarize))
 
-        if mode in (KeyframeMode.OCR_INLINE, KeyframeMode.OCR_INLINE_IMAGE):
-            transcript = inject_ocr_into_transcript(transcript, ocr_results)
-            logger.info("Injected OCR: %d total segments", len(transcript.segments))
+    # Save OCR files for file-based modes (after dedup)
+    if ocr_results and mode in (KeyframeMode.OCR, KeyframeMode.OCR_IMAGE):
+        ocr_paths = save_ocr_results(ocr_results, output_dir)
+        logger.info("Saved %d OCR files", sum(1 for p in ocr_paths if p))
 
     # For NONE mode, pass no keyframes
     if mode == KeyframeMode.NONE:
@@ -699,6 +702,7 @@ async def test_summarize_all_modes(no_keyframes, ocr_flag, expected_mode):
     # Save the transcript that will be sent
     transcript_text = _build_interleaved_transcript(
         transcript, kf_for_summarize, mode=mode, ocr_paths=ocr_paths,
+        video_meta=video_meta, ocr_results=ocr_results,
     )
     (output_dir / "transcript_prompt.txt").write_text(transcript_text, encoding="utf-8")
     logger.info("Transcript prompt saved (%d chars)", len(transcript_text))
@@ -710,6 +714,7 @@ async def test_summarize_all_modes(no_keyframes, ocr_flag, expected_mode):
         video_meta=video_meta,
         keyframe_mode=mode,
         ocr_paths=ocr_paths,
+        ocr_results=ocr_results,
     )
 
     # Save outputs
