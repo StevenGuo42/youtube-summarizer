@@ -622,9 +622,18 @@ async def _load_test_data():
     if not frame_files:
         pytest.skip("No keyframe files found")
 
+    # Get actual audio duration for accurate timestamp ranges
+    import subprocess
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", str(audio_path)],
+        capture_output=True, text=True,
+    )
+    audio_duration = float(probe.stdout.strip()) if probe.returncode == 0 else 120.0
+
     # Use first 5 keyframes to keep OCR fast
     frame_files = frame_files[:5]
-    interval = 120.0 / len(frame_files)
+    interval = audio_duration / len(frame_files)
     keyframes = [
         KeyFrame(timestamp=i * interval, image_path=f)
         for i, f in enumerate(frame_files)
@@ -633,7 +642,7 @@ async def _load_test_data():
     video_meta = {
         "title": "标普 道指 纳指 罗素 指数 成分结构 特性和区别",
         "channel": "视野环球财经",
-        "duration": 1644,
+        "duration": audio_duration,
     }
 
     return transcript, keyframes, video_meta
