@@ -740,3 +740,49 @@ async def test_summarize_all_modes(no_keyframes, ocr_flag, expected_mode):
     assert isinstance(result, SummaryResult)
     assert result.raw_response
     assert result.title or result.summary, f"Mode {mode.value} produced no output"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("dedup_mode", ["regular", "slides", "none"])
+async def test_dedup_modes(dedup_mode):
+    """Compare dedup modes on real keyframes — saves transcript prompts for inspection."""
+    from pathlib import Path
+
+    from app.config import TMP_DIR
+    from app.services.keyframes import deduplicate_keyframes
+
+    transcript, keyframes, video_meta = await _load_test_data()
+
+    output_dir = TMP_DIR / f"test_dedup_{dedup_mode}"
+    output_dir.mkdir(exist_ok=True)
+
+    logger.info("=== Dedup mode: %s, input: %d keyframes ===", dedup_mode, len(keyframes))
+
+    deduped, _ = deduplicate_keyframes(keyframes, mode=dedup_mode)
+    logger.info("Dedup %s: %d -> %d keyframes", dedup_mode, len(keyframes), len(deduped))
+
+    # Log which frames survived
+    for i, kf in enumerate(deduped):
+        logger.info("  [%d] t=%.1f %s", i, kf.timestamp, kf.image_path.name)
+
+    # Save transcript prompt for inspection
+    transcript_text = _build_interleaved_transcript(
+        transcript, deduped, mode=KeyframeMode.IMAGE, video_meta=video_meta,
+    )
+    (output_dir / "transcript_prompt.txt").write_text(transcript_text, encoding="utf-8")
+    logger.info("Saved to %s (%d chars)", output_dir, len(transcript_text))
+
+    # Verify expectations
+    if dedup_mode == "none":
+        assert len(deduped) == len(keyframes), "none mode should keep all frames"
+    elif dedup_mode == "slides":
+        assert len(deduped) >= 1, "slides mode should keep at least 1 frame"
+        # slides should keep >= regular (stricter threshold keeps more)
+    elif dedup_mode == "regular":
+        assert len(deduped) >= 1, "regular mode should keep at least 1 frame"
+
+    # Log comparison if not 'none'
+    if dedup_mode != "none":
+        logger.info("Dedup %s kept %d/%d (%.0f%%) keyframes",
+                     dedup_mode, len(deduped), len(keyframes),
+                     100 * len(deduped) / len(keyframes))
