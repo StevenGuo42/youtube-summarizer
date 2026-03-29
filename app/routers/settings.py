@@ -61,3 +61,47 @@ async def save_llm_config(config: LLMConfig):
         return {"status": "ok"}
     finally:
         await db.close()
+
+
+class WorkerConfig(BaseModel):
+    processing_mode: str = "sequential"
+    batch_size: int = 5
+
+
+class WorkerConfigResponse(BaseModel):
+    processing_mode: str
+    batch_size: int
+
+
+@router.get("/worker")
+async def get_worker_config() -> WorkerConfigResponse:
+    db = await get_db()
+    try:
+        row = await db.execute("SELECT * FROM worker_settings WHERE id = 1")
+        row = await row.fetchone()
+        if row:
+            return WorkerConfigResponse(
+                processing_mode=row["processing_mode"],
+                batch_size=row["batch_size"],
+            )
+        return WorkerConfigResponse(processing_mode="sequential", batch_size=5)
+    finally:
+        await db.close()
+
+
+@router.post("/worker")
+async def save_worker_config(config: WorkerConfig):
+    db = await get_db()
+    try:
+        await db.execute(
+            """INSERT INTO worker_settings (id, processing_mode, batch_size)
+               VALUES (1, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 processing_mode = excluded.processing_mode,
+                 batch_size = excluded.batch_size""",
+            (config.processing_mode, config.batch_size),
+        )
+        await db.commit()
+        return {"status": "ok"}
+    finally:
+        await db.close()
