@@ -44,6 +44,15 @@ uv run python cli.py "https://www.youtube.com/watch?v=VIDEO_ID"
 # Without keyframes (faster)
 uv run python cli.py "https://www.youtube.com/watch?v=VIDEO_ID" --no-keyframes
 
+# With OCR (extract text from keyframes for Claude)
+uv run python cli.py "https://www.youtube.com/watch?v=VIDEO_ID" --ocr inline
+
+# OCR only, no images (cheaper, less tokens)
+uv run python cli.py "https://www.youtube.com/watch?v=VIDEO_ID" --no-keyframes --ocr inline
+
+# Slides mode dedup (keeps more keyframes for presentations)
+uv run python cli.py "https://www.youtube.com/watch?v=VIDEO_ID" --dedup slides
+
 # Save to file
 uv run python cli.py "https://www.youtube.com/watch?v=VIDEO_ID" -o summary.md
 
@@ -105,10 +114,12 @@ Open `http://localhost:8000` in your browser. The web app provides queue managem
 ## How It Works
 
 1. **Download** — yt-dlp downloads the video (with cookie auth if needed)
-2. **Transcript** — YouTube captions extracted first; falls back to Whisper if unavailable
+2. **Transcript** — YouTube captions extracted first; falls back to Whisper if unavailable (auto language detection)
 3. **Keyframes** — ffmpeg scene detection extracts key visual moments
-4. **Summarize** — Transcript is grouped by keyframe boundaries and sent to Claude with the images
-5. **Cleanup** — Temp files removed, summary saved to SQLite
+4. **Dedup** — Similar keyframes collapsed (pHash for regular videos, SSIM for slides/presentations)
+5. **OCR** (optional) — chandra-ocr-2 extracts on-screen text from deduplicated keyframes
+6. **Summarize** — Transcript grouped by keyframe boundaries with XML tags, sent to Claude with images/OCR
+7. **Cleanup** — Temp files removed, summary saved to SQLite
 
 ## Running Tests
 
@@ -149,6 +160,7 @@ youtube-summarizer/
 │   │   ├── ytdlp.py        # yt-dlp wrapper
 │   │   ├── transcript.py   # Captions + Whisper fallback
 │   │   ├── keyframes.py    # ffmpeg keyframe extraction
+│   │   ├── ocr.py          # chandra-ocr-2 text extraction
 │   │   ├── llm.py          # Claude Agent SDK integration
 │   │   └── pipeline.py     # Orchestrates the full pipeline
 │   └── queue/
