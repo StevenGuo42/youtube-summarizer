@@ -102,6 +102,8 @@ async def summarize(
     video_meta: dict,
     custom_prompt: str | None = None,
     model: str | None = None,
+    keyframe_mode: KeyframeMode = KeyframeMode.IMAGE,
+    ocr_paths: list[Path | None] | None = None,
 ) -> SummaryResult:
     """Summarize a video using Claude via the Agent SDK."""
     settings = await get_llm_settings()
@@ -118,20 +120,30 @@ async def summarize(
     parts.append("=== TRANSCRIPT ===")
 
     # Interleave keyframes into the timestamped transcript
-    parts.append(_build_interleaved_transcript(transcript, keyframes))
+    parts.append(_build_interleaved_transcript(
+        transcript, keyframes, mode=keyframe_mode, ocr_paths=ocr_paths,
+    ))
 
     user_prompt = "\n".join(parts)
 
     logger.info(
-        "Sending to Claude: %d segments, %d keyframes",
+        "Sending to Claude: %d segments, %d keyframes, mode=%s",
         len(transcript.segments),
         len(keyframes),
+        keyframe_mode.value,
     )
 
-    # Configure Agent SDK - only allow Read tool for viewing keyframe images
+    # Enable Read tool only when Claude needs to read files
+    needs_read = keyframe_mode in (
+        KeyframeMode.IMAGE,
+        KeyframeMode.OCR,
+        KeyframeMode.OCR_IMAGE,
+        KeyframeMode.OCR_INLINE_IMAGE,
+    )
+
     options = ClaudeAgentOptions(
         system_prompt=system_prompt,
-        allowed_tools=["Read"] if keyframes else [],
+        allowed_tools=["Read"] if needs_read else [],
         model=model or settings.get("model") or "claude-sonnet-4-20250514",
     )
 
