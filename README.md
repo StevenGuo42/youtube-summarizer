@@ -12,7 +12,7 @@ Self-hosted tool that summarizes YouTube videos using keyframe extraction, trans
 - [Node.js](https://nodejs.org/) 18+ (via nvm — needed by yt-dlp for YouTube)
 - [ffmpeg](https://ffmpeg.org/)
 - [Claude Code](https://code.claude.com/docs/en/overview) (for LLM summarization)
-- GPU (recommended for `faster-whisper`)
+- GPU (recommended for `faster-whisper` and `Chandra OCR`)
 
 ## Install
 
