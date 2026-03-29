@@ -79,6 +79,10 @@ async def run(args):
     video_id = extract_video_id(args.url)
     logger.info("Video ID: %s", video_id)
 
+    # Resolve keyframe mode from flags
+    mode = _resolve_keyframe_mode(args.no_keyframes, args.ocr)
+    logger.info("Keyframe mode: %s", mode.value)
+
     # Fetch metadata
     logger.info("Fetching video info...")
     try:
@@ -129,9 +133,9 @@ async def run(args):
         _output_transcript(args, transcript)
         return
 
-    # Extract keyframes
+    # Extract keyframes (needed for all modes except NONE)
     keyframes = []
-    if not args.no_keyframes and video_path and video_path.exists():
+    if mode != KeyframeMode.NONE and video_path and video_path.exists():
         from app.services.keyframes import extract_keyframes
         logger.info("Extracting keyframes...")
         try:
@@ -139,6 +143,28 @@ async def run(args):
             logger.info("Extracted %d keyframes", len(keyframes))
         except Exception:
             logger.warning("Keyframe extraction failed, continuing without")
+
+    # Run OCR if needed
+    ocr_paths = None
+    needs_ocr = mode in (
+        KeyframeMode.OCR, KeyframeMode.OCR_IMAGE,
+        KeyframeMode.OCR_INLINE, KeyframeMode.OCR_INLINE_IMAGE,
+    )
+    if needs_ocr and keyframes:
+        from app.services.ocr import extract_text, save_ocr_results
+        logger.info("Running OCR on %d keyframes...", len(keyframes))
+        ocr_results = await extract_text(keyframes)
+
+        # Save OCR files for file-based modes
+        if mode in (KeyframeMode.OCR, KeyframeMode.OCR_IMAGE):
+            ocr_paths = save_ocr_results(ocr_results, work_dir)
+            logger.info("Saved %d OCR files", sum(1 for p in ocr_paths if p))
+
+        # Inject OCR text into transcript for inline modes
+        if mode in (KeyframeMode.OCR_INLINE, KeyframeMode.OCR_INLINE_IMAGE):
+            from app.services.transcript import inject_ocr_into_transcript
+            transcript = inject_ocr_into_transcript(transcript, ocr_results)
+            logger.info("Injected OCR into transcript: %d segments", len(transcript.segments))
 
     # Summarize
     from app.services.llm import summarize
@@ -160,6 +186,8 @@ async def run(args):
         video_meta=video_meta,
         custom_prompt=custom_prompt,
         model=args.model,
+        keyframe_mode=mode,
+        ocr_paths=ocr_paths,
     )
     logger.info("Summary generated: %d chars", len(result.raw_response))
 
