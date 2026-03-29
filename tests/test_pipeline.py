@@ -180,6 +180,79 @@ async def test_pipeline_reads_job_modes():
 
 
 @pytest.mark.asyncio
+async def test_process_batch_runs_steps_across_jobs():
+    """Test that process_batch runs each step for all jobs before moving to next step."""
+    from unittest.mock import AsyncMock, patch
+
+    from app.services.pipeline import process_batch
+
+    job_ids = []
+    for i in range(3):
+        jid = str(uuid.uuid4())
+        job_ids.append(jid)
+        db = await get_db()
+        try:
+            await db.execute(
+                """INSERT INTO jobs (id, video_id, title, status, dedup_mode, keyframe_mode)
+                   VALUES (?, ?, ?, 'pending', 'regular', 'image')""",
+                (jid, f"vid{i}", f"Video {i}"),
+            )
+            await db.commit()
+        finally:
+            await db.close()
+
+    step_order = []
+
+    async def track_download(vid, wdir):
+        step_order.append(("download", vid))
+        return wdir / "fake.mp4"
+
+    async def track_transcript(vid, vpath, wdir, **kwargs):
+        step_order.append(("transcript", vid))
+        return TranscriptResult(text="hi", segments=[Segment(0, 1, "hi")], source="captions")
+
+    async def track_keyframes(vpath, wdir):
+        step_order.append(("keyframes", str(vpath)))
+        return []
+
+    from app.services.transcript import TranscriptResult, Segment
+
+    with patch("app.services.pipeline.download_video", side_effect=track_download), \
+         patch("app.services.pipeline.extract_transcript", side_effect=track_transcript), \
+         patch("app.services.pipeline.extract_keyframes", side_effect=track_keyframes), \
+         patch("app.services.pipeline.summarize", new_callable=AsyncMock) as mock_sum, \
+         patch("app.services.pipeline._cleanup"):
+
+        from app.services.llm import SummaryResult
+        mock_sum.return_value = SummaryResult(
+            raw_response='{"title":"T","tldr":"TL","summary":"S"}',
+            title="T", tldr="TL", summary="S",
+        )
+
+        await process_batch(job_ids)
+
+    # Verify step ordering: all downloads before all transcripts before all keyframes
+    download_indices = [i for i, (step, _) in enumerate(step_order) if step == "download"]
+    transcript_indices = [i for i, (step, _) in enumerate(step_order) if step == "transcript"]
+    keyframe_indices = [i for i, (step, _) in enumerate(step_order) if step == "keyframes"]
+
+    if download_indices and transcript_indices:
+        assert max(download_indices) < min(transcript_indices)
+    if transcript_indices and keyframe_indices:
+        assert max(transcript_indices) < min(keyframe_indices)
+
+    # Verify all jobs completed
+    for jid in job_ids:
+        db = await get_db()
+        try:
+            cursor = await db.execute("SELECT status FROM jobs WHERE id = ?", (jid,))
+            row = await cursor.fetchone()
+        finally:
+            await db.close()
+        assert row["status"] == "done"
+
+
+@pytest.mark.asyncio
 async def test_db_schema_has_new_columns():
     """Verify jobs table has dedup_mode, keyframe_mode, warnings columns
     and worker_settings table exists."""
