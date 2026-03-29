@@ -28,6 +28,24 @@ async def _update_job(job_id: str, **kwargs):
         await db.close()
 
 
+async def _add_warning(job_id: str, warning: str):
+    """Append a warning to the job's warnings JSON array."""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT warnings FROM jobs WHERE id = ?", (job_id,))
+        row = await cursor.fetchone()
+        warnings = json.loads(row["warnings"]) if row and row["warnings"] else []
+        warnings.append(warning)
+        await db.execute(
+            "UPDATE jobs SET warnings = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (json.dumps(warnings), job_id),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+    logger.warning("[%s] %s", job_id, warning)
+
+
 async def process_job(job_id: str) -> None:
     """Run the full pipeline for a single video job."""
     db = await get_db()

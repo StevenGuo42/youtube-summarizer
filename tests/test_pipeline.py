@@ -76,6 +76,37 @@ async def test_pipeline_public_video():
 
 
 @pytest.mark.asyncio
+async def test_pipeline_add_warning():
+    """Test that warnings are appended to a job."""
+    from app.services.pipeline import _add_warning
+
+    job_id = str(uuid.uuid4())
+    db = await get_db()
+    try:
+        await db.execute(
+            """INSERT INTO jobs (id, video_id, title, status)
+               VALUES (?, ?, 'Test', 'pending')""",
+            (job_id, "test123"),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+    await _add_warning(job_id, "First warning")
+    await _add_warning(job_id, "Second warning")
+
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT warnings FROM jobs WHERE id = ?", (job_id,))
+        row = await cursor.fetchone()
+    finally:
+        await db.close()
+
+    warnings = json.loads(row["warnings"])
+    assert warnings == ["First warning", "Second warning"]
+
+
+@pytest.mark.asyncio
 async def test_db_schema_has_new_columns():
     """Verify jobs table has dedup_mode, keyframe_mode, warnings columns
     and worker_settings table exists."""
