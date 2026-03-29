@@ -28,7 +28,8 @@ class TranscriptResult:
 
 
 async def extract_transcript(
-    video_id: str, video_path: Path | None, work_dir: Path
+    video_id: str, video_path: Path | None, work_dir: Path,
+    whisper_model=None,
 ) -> TranscriptResult:
     """Extract transcript: try YouTube captions first, fall back to faster-whisper."""
     result = await _try_captions(video_id, work_dir)
@@ -38,7 +39,7 @@ async def extract_transcript(
 
     if video_path and video_path.exists():
         logger.info("No captions for %s, falling back to whisper", video_id)
-        return await _transcribe_whisper(video_path, work_dir)
+        return await _transcribe_whisper(video_path, work_dir, whisper_model=whisper_model)
 
     raise RuntimeError(f"No captions and no video file for {video_id}")
 
@@ -129,7 +130,40 @@ def _detect_language(audio_path: str) -> str | None:
             torch.cuda.empty_cache()
 
 
-async def _transcribe_whisper(video_path: Path, work_dir: Path) -> TranscriptResult:
+def load_whisper_model():
+    """Load the best available whisper model. Returns WhisperModel instance.
+
+    Tries GPU large-v3 first, falls back to CPU small.
+    Caller is responsible for cleanup.
+    """
+    from faster_whisper import WhisperModel
+
+    WHISPER_MODEL_DIR.mkdir(parents=True, exist_ok=True)
+
+    if torch.cuda.is_available():
+        try:
+            model = WhisperModel(
+                "Systran/faster-whisper-large-v3",
+                device="cuda",
+                compute_type="float16",
+                download_root=str(WHISPER_MODEL_DIR),
+            )
+            logger.info("Loaded whisper large-v3 on GPU")
+            return model
+        except Exception as e:
+            logger.warning("Failed to load GPU whisper: %s", e)
+
+    model = WhisperModel(
+        "small",
+        device="cpu",
+        compute_type="float32",
+        download_root=str(WHISPER_MODEL_DIR),
+    )
+    logger.info("Loaded whisper small on CPU")
+    return model
+
+
+async def _transcribe_whisper(video_path: Path, work_dir: Path, whisper_model=None) -> TranscriptResult:
     """Transcribe audio using faster-whisper. Tries GPU first, falls back to CPU."""
     audio_path = work_dir / "audio.wav"
     await _extract_audio(video_path, audio_path)
@@ -141,6 +175,20 @@ async def _transcribe_whisper(video_path: Path, work_dir: Path) -> TranscriptRes
 
         # Detect language first using the small model
         language = _detect_language(str(audio_path))
+
+        if whisper_model:
+            # Use pre-loaded model
+            result_segments, _info = whisper_model.transcribe(
+                str(audio_path), language=language,
+            )
+            segments = []
+            for seg in result_segments:
+                segments.append(Segment(
+                    start=seg.start,
+                    end=seg.end,
+                    text=seg.text.strip(),
+                ))
+            return segments
 
         configs = []
         if torch.cuda.is_available():
