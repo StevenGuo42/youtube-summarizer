@@ -8,6 +8,8 @@ import re
 import sys
 from pathlib import Path
 
+from app.services.llm import KeyframeMode
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -25,7 +27,25 @@ def parse_args():
     p.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format (default: markdown)")
     p.add_argument("--transcript-only", action="store_true", help="Only extract transcript, skip summarization")
     p.add_argument("--no-keyframes", action="store_true", help="Skip keyframe extraction")
+    p.add_argument("--ocr", choices=["none", "file", "inline"], default="none",
+                   help="OCR mode for keyframes: none (default), file (save to .txt for Claude to read), inline (inject into transcript)")
     return p.parse_args()
+
+
+def _resolve_keyframe_mode(no_keyframes: bool, ocr: str) -> KeyframeMode:
+    """Derive KeyframeMode from the two CLI flags."""
+    if no_keyframes:
+        if ocr == "file":
+            return KeyframeMode.OCR
+        if ocr == "inline":
+            return KeyframeMode.OCR_INLINE
+        return KeyframeMode.NONE
+    else:
+        if ocr == "file":
+            return KeyframeMode.OCR_IMAGE
+        if ocr == "inline":
+            return KeyframeMode.OCR_INLINE_IMAGE
+        return KeyframeMode.IMAGE
 
 
 def extract_video_id(url: str) -> str:

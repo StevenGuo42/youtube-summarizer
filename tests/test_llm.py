@@ -5,6 +5,7 @@ import logging
 
 import pytest
 
+from cli import _resolve_keyframe_mode
 from app.database import init_db
 from app.services.llm import (
     DEFAULT_PROMPT,
@@ -342,6 +343,27 @@ class TestBuildInterleavedTranscript:
         )
         assert result_default == result_explicit
         assert "[KEYFRAME: /tmp/frame1.png]" in result_default
+
+
+class TestResolveKeyframeMode:
+    def test_defaults(self):
+        """Default flags resolve to IMAGE."""
+        assert _resolve_keyframe_mode(no_keyframes=False, ocr="none") == KeyframeMode.IMAGE
+
+    def test_no_keyframes_only(self):
+        assert _resolve_keyframe_mode(no_keyframes=True, ocr="none") == KeyframeMode.NONE
+
+    def test_ocr_file(self):
+        assert _resolve_keyframe_mode(no_keyframes=False, ocr="file") == KeyframeMode.OCR_IMAGE
+
+    def test_ocr_inline(self):
+        assert _resolve_keyframe_mode(no_keyframes=False, ocr="inline") == KeyframeMode.OCR_INLINE_IMAGE
+
+    def test_no_keyframes_ocr_file(self):
+        assert _resolve_keyframe_mode(no_keyframes=True, ocr="file") == KeyframeMode.OCR
+
+    def test_no_keyframes_ocr_inline(self):
+        assert _resolve_keyframe_mode(no_keyframes=True, ocr="inline") == KeyframeMode.OCR_INLINE
 
 
 # --- Integration tests (require Claude auth) ---
