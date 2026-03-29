@@ -145,26 +145,28 @@ async def run(args):
             logger.warning("Keyframe extraction failed, continuing without")
 
     # Run OCR if needed
+    ocr_results = None
     ocr_paths = None
     needs_ocr = mode in (
         KeyframeMode.OCR, KeyframeMode.OCR_IMAGE,
         KeyframeMode.OCR_INLINE, KeyframeMode.OCR_INLINE_IMAGE,
     )
     if needs_ocr and keyframes:
-        from app.services.ocr import extract_text, save_ocr_results
+        from app.services.ocr import extract_text
         logger.info("Running OCR on %d keyframes...", len(keyframes))
         ocr_results = await extract_text(keyframes)
 
-        # Save OCR files for file-based modes
-        if mode in (KeyframeMode.OCR, KeyframeMode.OCR_IMAGE):
-            ocr_paths = save_ocr_results(ocr_results, work_dir)
-            logger.info("Saved %d OCR files", sum(1 for p in ocr_paths if p))
+    # Deduplicate keyframes
+    if keyframes:
+        from app.services.keyframes import deduplicate_keyframes
+        keyframes, ocr_results = deduplicate_keyframes(keyframes, ocr_results=ocr_results)
+        logger.info("After dedup: %d keyframes", len(keyframes))
 
-        # Inject OCR text into transcript for inline modes
-        if mode in (KeyframeMode.OCR_INLINE, KeyframeMode.OCR_INLINE_IMAGE):
-            from app.services.transcript import inject_ocr_into_transcript
-            transcript = inject_ocr_into_transcript(transcript, ocr_results)
-            logger.info("Injected OCR into transcript: %d segments", len(transcript.segments))
+    # Save OCR files for file-based modes (after dedup)
+    if ocr_results and mode in (KeyframeMode.OCR, KeyframeMode.OCR_IMAGE):
+        from app.services.ocr import save_ocr_results
+        ocr_paths = save_ocr_results(ocr_results, work_dir)
+        logger.info("Saved %d OCR files", sum(1 for p in ocr_paths if p))
 
     # Summarize
     from app.services.llm import summarize
@@ -188,6 +190,7 @@ async def run(args):
         model=args.model,
         keyframe_mode=mode,
         ocr_paths=ocr_paths,
+        ocr_results=ocr_results,
     )
     logger.info("Summary generated: %d chars", len(result.raw_response))
 

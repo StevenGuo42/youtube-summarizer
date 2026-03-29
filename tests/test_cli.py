@@ -135,6 +135,7 @@ def _make_args(**kwargs):
         "format": "markdown",
         "transcript_only": False,
         "no_keyframes": False,
+        "ocr": "none",
     }
     defaults.update(kwargs)
 
