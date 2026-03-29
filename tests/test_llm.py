@@ -631,8 +631,6 @@ async def _load_test_data():
     )
     audio_duration = float(probe.stdout.strip()) if probe.returncode == 0 else 120.0
 
-    # Use first 5 keyframes to keep OCR fast
-    frame_files = frame_files[:5]
     interval = audio_duration / len(frame_files)
     keyframes = [
         KeyFrame(timestamp=i * interval, image_path=f)
