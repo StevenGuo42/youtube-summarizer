@@ -37,6 +37,7 @@ def test_cuda_tensor_ops():
     """Basic CUDA tensor round-trip to confirm the driver works."""
     t = torch.randn(256, 256, device="cuda")
     result = t @ t.T
+    logger.info("Tensor matmul: shape=%s, device=%s", result.shape, result.device)
     assert result.shape == (256, 256)
     assert result.device.type == "cuda"
     del t, result
