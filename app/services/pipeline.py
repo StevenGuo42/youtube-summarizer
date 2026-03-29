@@ -6,10 +6,18 @@ from pathlib import Path
 
 from app.config import TMP_DIR
 from app.database import get_db
+from app.services.keyframes import KeyFrame, extract_keyframes, deduplicate_keyframes
+from app.services.llm import summarize, KeyframeMode
+from app.services.ocr import extract_text, save_ocr_results
+from app.services.transcript import extract_transcript, TranscriptResult
+from app.services.ytdlp import download_video
 
 logger = logging.getLogger(__name__)
 
-STEPS = ["downloading", "transcribing", "extracting_keyframes", "summarizing", "cleanup"]
+STEPS = ["downloading", "transcribing", "extracting_keyframes", "deduplicating", "ocr", "summarizing", "cleanup"]
+
+# Keyframe modes that require OCR
+_OCR_MODES = {"ocr", "ocr+image", "ocr-inline", "ocr-inline+image"}
 
 
 async def _update_job(job_id: str, **kwargs):
@@ -60,60 +68,115 @@ async def process_job(job_id: str) -> None:
         return
 
     video_id = job["video_id"]
+    dedup_mode = job["dedup_mode"] or "regular"
+    keyframe_mode_str = job["keyframe_mode"] or "image"
     work_dir = TMP_DIR / job_id
     work_dir.mkdir(exist_ok=True)
 
     transcript = None
-    keyframes = []
+    keyframes: list[KeyFrame] = []
+    ocr_results = None
+    ocr_paths = None
     video_path = None
 
     try:
         # Step 1: Download
         await _update_job(job_id, status="processing", current_step="downloading")
         try:
-            from app.services.ytdlp import download_video
-
             video_path = await download_video(video_id, work_dir)
             logger.info("[%s] Downloaded: %s", job_id, video_path)
         except Exception:
             logger.exception("[%s] Download failed", job_id)
-            # Continue — transcript might still work via captions
+            await _add_warning(job_id, "Download failed, attempting transcript via captions")
 
         # Step 2: Transcript
         await _update_job(job_id, current_step="transcribing")
         try:
-            from app.services.transcript import extract_transcript
-
             transcript = await extract_transcript(video_id, video_path, work_dir)
             logger.info("[%s] Transcript: %s, %d segments", job_id, transcript.source, len(transcript.segments))
         except Exception:
             logger.exception("[%s] Transcript extraction failed", job_id)
+            await _add_warning(job_id, "Transcript extraction failed, using keyframes only")
 
         # Step 3: Keyframes
         await _update_job(job_id, current_step="extracting_keyframes")
         if video_path and video_path.exists():
             try:
-                from app.services.keyframes import extract_keyframes
-
                 keyframes = await extract_keyframes(video_path, work_dir)
                 logger.info("[%s] Keyframes: %d extracted", job_id, len(keyframes))
             except Exception:
                 logger.exception("[%s] Keyframe extraction failed", job_id)
+                await _add_warning(job_id, "Keyframe extraction failed, using transcript only")
         else:
             logger.warning("[%s] No video file, skipping keyframes", job_id)
+            if not transcript:
+                await _update_job(job_id, status="failed", error="No video file and no transcript")
+                return
 
         # Check if we have anything to summarize
         if not transcript and not keyframes:
             await _update_job(job_id, status="failed", error="Both transcript and keyframe extraction failed")
             return
 
-        # Step 4: Summarize
+        # Determine if OCR is needed
+        needs_ocr = keyframe_mode_str in _OCR_MODES and bool(keyframes)
+
+        # Handle dedup_mode=ocr special case: need OCR before dedup
+        effective_dedup_mode = dedup_mode
+        if dedup_mode == "ocr" and not needs_ocr:
+            effective_dedup_mode = "regular"
+            await _add_warning(job_id, "OCR dedup requested but keyframe mode doesn't use OCR, falling back to regular dedup")
+
+        # Step 4/5: Dedup and OCR (order depends on dedup mode)
+        if effective_dedup_mode == "ocr" and keyframes:
+            # OCR first, then dedup by text
+            await _update_job(job_id, current_step="ocr")
+            try:
+                ocr_results = await extract_text(keyframes)
+                ocr_paths = save_ocr_results(ocr_results, work_dir)
+                logger.info("[%s] OCR: %d results", job_id, len(ocr_results))
+            except Exception:
+                logger.exception("[%s] OCR failed", job_id)
+                await _add_warning(job_id, "OCR failed, falling back to image-only mode")
+                keyframe_mode_str = "image"
+                needs_ocr = False
+
+            await _update_job(job_id, current_step="deduplicating")
+            try:
+                keyframes, ocr_results = deduplicate_keyframes(
+                    keyframes, ocr_results=ocr_results, mode="ocr",
+                )
+                if ocr_results:
+                    ocr_paths = save_ocr_results(ocr_results, work_dir)
+                logger.info("[%s] Dedup (ocr): %d keyframes remaining", job_id, len(keyframes))
+            except Exception:
+                logger.exception("[%s] Dedup failed", job_id)
+                await _add_warning(job_id, "Dedup failed, using all keyframes")
+        else:
+            # Dedup first, then OCR on deduped frames
+            await _update_job(job_id, current_step="deduplicating")
+            if keyframes:
+                try:
+                    keyframes, _ = deduplicate_keyframes(keyframes, mode=effective_dedup_mode)
+                    logger.info("[%s] Dedup (%s): %d keyframes remaining", job_id, effective_dedup_mode, len(keyframes))
+                except Exception:
+                    logger.exception("[%s] Dedup failed", job_id)
+                    await _add_warning(job_id, "Dedup failed, using all keyframes")
+
+            await _update_job(job_id, current_step="ocr")
+            if needs_ocr and keyframes:
+                try:
+                    ocr_results = await extract_text(keyframes)
+                    ocr_paths = save_ocr_results(ocr_results, work_dir)
+                    logger.info("[%s] OCR: %d results", job_id, len(ocr_results))
+                except Exception:
+                    logger.exception("[%s] OCR failed", job_id)
+                    await _add_warning(job_id, "OCR failed, falling back to image-only mode")
+                    keyframe_mode_str = "image"
+
+        # Step 6: Summarize
         await _update_job(job_id, current_step="summarizing")
         try:
-            from app.services.llm import summarize
-            from app.services.transcript import TranscriptResult
-
-            # If transcript failed, create a minimal one
             if not transcript:
                 transcript = TranscriptResult(text="[No transcript available]", segments=[], source="none")
 
@@ -127,10 +190,12 @@ async def process_job(job_id: str) -> None:
                 transcript=transcript,
                 keyframes=keyframes,
                 video_meta=video_meta,
+                keyframe_mode=KeyframeMode(keyframe_mode_str),
+                ocr_paths=ocr_paths,
+                ocr_results=ocr_results,
             )
             logger.info("[%s] Summary generated: %d chars", job_id, len(result.raw_response))
 
-            # Save to database
             summary_id = str(uuid.uuid4())
             structured = json.dumps({
                 "title": result.title,
@@ -154,13 +219,12 @@ async def process_job(job_id: str) -> None:
             await _update_job(job_id, status="failed", error="Summarization failed")
             return
 
-        # Step 5: Cleanup
+        # Step 7: Cleanup
         await _update_job(job_id, current_step="cleanup")
         _cleanup(work_dir)
 
-        status = "done" if transcript and transcript.source != "none" else "partial"
-        await _update_job(job_id, status=status, current_step=None)
-        logger.info("[%s] Pipeline complete: %s", job_id, status)
+        await _update_job(job_id, status="done", current_step=None)
+        logger.info("[%s] Pipeline complete", job_id)
 
     except Exception:
         logger.exception("[%s] Pipeline failed unexpectedly", job_id)
