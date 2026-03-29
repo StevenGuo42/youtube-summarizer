@@ -76,6 +76,79 @@ async def extract_keyframes(video_path: Path, work_dir: Path) -> list[KeyFrame]:
     return keyframes
 
 
+def deduplicate_keyframes(
+    keyframes: list[KeyFrame],
+    ocr_results: list | None = None,
+) -> tuple[list[KeyFrame], list | None]:
+    """Deduplicate similar consecutive keyframes.
+
+    With ocr_results: groups by fuzzy OCR text match (SequenceMatcher ratio > 0.85).
+    Without: groups by perceptual hash (pHash hamming distance <= 5).
+    Returns (deduped_keyframes, deduped_ocr_results). ocr_results output is None when input is None.
+    """
+    if not keyframes:
+        return ([], None) if ocr_results is None else ([], [])
+
+    if len(keyframes) == 1:
+        return (list(keyframes), None) if ocr_results is None else (list(keyframes), list(ocr_results))
+
+    if ocr_results is not None:
+        return _dedup_by_ocr(keyframes, ocr_results)
+    return _dedup_by_phash(keyframes), None
+
+
+def _dedup_by_ocr(
+    keyframes: list[KeyFrame], ocr_results: list,
+) -> tuple[list[KeyFrame], list]:
+    """Group consecutive keyframes by fuzzy OCR text similarity."""
+    from difflib import SequenceMatcher
+
+    keep_kf = [keyframes[0]]
+    keep_ocr = [ocr_results[0]]
+    rep_text = ocr_results[0].text.strip()
+
+    for i in range(1, len(keyframes)):
+        curr_text = ocr_results[i].text.strip()
+
+        # Empty OCR text frames are always kept as unique
+        if not rep_text or not curr_text:
+            keep_kf.append(keyframes[i])
+            keep_ocr.append(ocr_results[i])
+            rep_text = curr_text
+            continue
+
+        ratio = SequenceMatcher(None, rep_text, curr_text).ratio()
+        if ratio <= 0.85:
+            keep_kf.append(keyframes[i])
+            keep_ocr.append(ocr_results[i])
+            rep_text = curr_text
+
+    logger.info("OCR dedup: %d -> %d keyframes", len(keyframes), len(keep_kf))
+    return keep_kf, keep_ocr
+
+
+def _dedup_by_phash(keyframes: list[KeyFrame]) -> list[KeyFrame]:
+    """Group consecutive keyframes by perceptual hash similarity."""
+    import imagehash
+    from PIL import Image
+
+    hashes = []
+    for kf in keyframes:
+        hashes.append(imagehash.phash(Image.open(kf.image_path)))
+
+    keep = [keyframes[0]]
+    rep_hash = hashes[0]
+
+    for i in range(1, len(keyframes)):
+        distance = rep_hash - hashes[i]
+        if distance > 5:
+            keep.append(keyframes[i])
+            rep_hash = hashes[i]
+
+    logger.info("pHash dedup: %d -> %d keyframes", len(keyframes), len(keep))
+    return keep
+
+
 async def _scene_detect(video_path: Path, frames_dir: Path) -> list[KeyFrame]:
     """Extract keyframes using ffmpeg scene change detection (GPU-accelerated decode when available)."""
     use_gpu = await _check_nvidia_hwaccel()
