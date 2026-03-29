@@ -134,6 +134,35 @@ def _parse_json3(path: Path) -> TranscriptResult:
     return TranscriptResult(text=full_text, segments=segments, source="captions")
 
 
+def _detect_language(audio_path: str) -> str | None:
+    """Detect audio language using whisper small model (processes first 30s only).
+
+    Uses GPU float16 (~1.7s) or CPU int8 (~2.5s).
+    """
+    from faster_whisper import WhisperModel
+
+    WHISPER_MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    gpu = torch.cuda.is_available()
+
+    try:
+        model = WhisperModel(
+            "small",
+            device="cuda" if gpu else "cpu",
+            compute_type="float16" if gpu else "int8",
+            download_root=str(WHISPER_MODEL_DIR),
+        )
+        _, info = model.transcribe(audio_path, beam_size=1, without_timestamps=True)
+        logger.info("Detected language: %s (%.1f%% confidence)", info.language, info.language_probability * 100)
+        return info.language
+    except Exception as e:
+        logger.warning("Language detection failed: %s", e)
+        return None
+    finally:
+        model = None
+        if gpu:
+            torch.cuda.empty_cache()
+
+
 async def _transcribe_whisper(video_path: Path, work_dir: Path) -> TranscriptResult:
     """Transcribe audio using faster-whisper. Tries GPU first, falls back to CPU."""
     audio_path = work_dir / "audio.wav"
@@ -144,14 +173,18 @@ async def _transcribe_whisper(video_path: Path, work_dir: Path) -> TranscriptRes
 
         WHISPER_MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
+        # Detect language first using the small model
+        language = _detect_language(str(audio_path))
+
         configs = []
         if torch.cuda.is_available():
-            configs.append(("Systran/faster-distil-whisper-large-v3", "cuda", "float16"))
+            configs.append(("Systran/faster-whisper-large-v3", "cuda", "float16"))
         configs.append(("small", "cpu", "float32"))
 
         last_error = None
         for model_name, device, compute_type in configs:
-            logger.info("Trying whisper model=%s device=%s compute_type=%s", model_name, device, compute_type)
+            logger.info("Trying whisper model=%s device=%s compute_type=%s language=%s",
+                        model_name, device, compute_type, language)
             model = None
             try:
                 model = WhisperModel(
@@ -160,7 +193,9 @@ async def _transcribe_whisper(video_path: Path, work_dir: Path) -> TranscriptRes
                     compute_type=compute_type,
                     download_root=str(WHISPER_MODEL_DIR),
                 )
-                result_segments, _info = model.transcribe(str(audio_path))
+                result_segments, _info = model.transcribe(
+                    str(audio_path), language=language,
+                )
                 segments = []
                 for seg in result_segments:
                     segments.append(Segment(
