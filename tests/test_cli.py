@@ -25,34 +25,23 @@ async def _ensure_db():
 
 class TestExtractVideoId:
     def test_standard_url(self):
-        result = extract_video_id("https://www.youtube.com/watch?v=jNQXAC9IVRw")
-        logger.info("standard_url: %s -> %s", "https://www.youtube.com/watch?v=jNQXAC9IVRw", result)
-        assert result == "jNQXAC9IVRw"
+        assert extract_video_id("https://www.youtube.com/watch?v=jNQXAC9IVRw") == "jNQXAC9IVRw"
 
     def test_short_url(self):
-        result = extract_video_id("https://youtu.be/jNQXAC9IVRw")
-        logger.info("short_url: %s -> %s", "https://youtu.be/jNQXAC9IVRw", result)
-        assert result == "jNQXAC9IVRw"
+        assert extract_video_id("https://youtu.be/jNQXAC9IVRw") == "jNQXAC9IVRw"
 
     def test_embed_url(self):
-        result = extract_video_id("https://www.youtube.com/embed/jNQXAC9IVRw")
-        logger.info("embed_url: %s -> %s", "https://www.youtube.com/embed/jNQXAC9IVRw", result)
-        assert result == "jNQXAC9IVRw"
+        assert extract_video_id("https://www.youtube.com/embed/jNQXAC9IVRw") == "jNQXAC9IVRw"
 
     def test_with_params(self):
-        result = extract_video_id("https://www.youtube.com/watch?v=jNQXAC9IVRw&t=30")
-        logger.info("with_params: %s -> %s", "https://www.youtube.com/watch?v=jNQXAC9IVRw&t=30", result)
-        assert result == "jNQXAC9IVRw"
+        assert extract_video_id("https://www.youtube.com/watch?v=jNQXAC9IVRw&t=30") == "jNQXAC9IVRw"
 
     def test_bare_id(self):
-        result = extract_video_id("jNQXAC9IVRw")
-        logger.info("bare_id: %s -> %s", "jNQXAC9IVRw", result)
-        assert result == "jNQXAC9IVRw"
+        assert extract_video_id("jNQXAC9IVRw") == "jNQXAC9IVRw"
 
     def test_invalid(self):
         with pytest.raises(ValueError):
             extract_video_id("not-a-url")
-        logger.info("invalid: 'not-a-url' -> ValueError raised")
 
 
 # --- Integration tests ---

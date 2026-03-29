@@ -38,7 +38,14 @@ def members_only_url(members_only_video_id):
 def pytest_configure(config):
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     logging.getLogger().setLevel(logging.DEBUG)
-    logging.getLogger("PIL").setLevel(logging.WARNING)
+
+    # Silence noisy third-party loggers — only app + test logs matter
+    for name in (
+        "PIL", "aiosqlite", "sqlite3", "asyncio", "httpcore", "httpx",
+        "faster_whisper", "filelock", "huggingface_hub",
+        "claude_agent_sdk", "urllib3",
+    ):
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 def pytest_collection_modifyitems(config, items):
