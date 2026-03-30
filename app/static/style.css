@@ -213,3 +213,33 @@ nav a[data-tab] {
 .summary-markdown pre code { background: transparent; padding: 0; }
 .summary-markdown blockquote { border-left: 3px solid #7b8495; padding: 0.5rem 1rem; color: #7b8495; margin: 0.5rem 0; }
 .summary-markdown a { color: #01aaff; }
+
+/* Settings tab: drop zone */
+.drop-zone {
+  min-height: 120px;
+  border: 2px dashed rgba(123, 132, 149, 0.3);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 1rem;
+}
+.drop-zone.drag-over {
+  border-color: #01aaff;
+  background: rgba(1, 170, 255, 0.05);
+}
+.drop-zone p { color: #7b8495; margin: 0; }
+
+/* Settings tab: buttons and layout */
+.settings-clear-btn { color: #b83f3b !important; border-color: rgba(184, 63, 59, 0.3) !important; }
+.settings-btn-row { display: flex; justify-content: flex-end; gap: 0.5rem; }
+.settings-help { color: #7b8495; }
+
+/* Settings tab: form and status */
+#llm-prompt { font-family: monospace; }
+.settings-status-ok { color: #2ea043; }
+.settings-status-fail { color: #b83f3b; }
+#cookie-paste-btn:disabled { opacity: 0.5; }

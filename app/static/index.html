@@ -55,7 +55,34 @@
         </section>
         <section id="settings" hidden>
             <h2>Settings</h2>
-            <p>Configure cookies for members-only access, set up your LLM model, and check authentication status.</p>
+
+            <article id="cookie-card">
+                <h3>Cookies</h3>
+                <p id="cookie-status"></p>
+                <div id="cookie-drop-zone" class="drop-zone">
+                    <p>Drag &amp; drop cookies.txt here</p>
+                    <button type="button" class="outline" id="cookie-file-btn">Browse Files</button>
+                    <input type="file" id="cookie-file-input" accept=".txt" hidden>
+                </div>
+                <textarea id="cookie-paste" rows="4" placeholder="Or paste cookie content here..."></textarea>
+                <button type="button" class="outline" id="cookie-paste-btn" disabled>Upload Pasted Content</button>
+            </article>
+
+            <article id="llm-card">
+                <h3>LLM Configuration</h3>
+                <label>Model<input type="text" id="llm-model" placeholder="claude-sonnet-4-20250514"></label>
+                <label for="llm-prompt">Custom Prompt</label>
+                <textarea id="llm-prompt" rows="10" placeholder="Leave empty to use default prompt..."></textarea>
+                <div class="settings-btn-row">
+                    <button type="button" class="outline" id="llm-reset-btn">Reset to Default</button>
+                    <button type="button" id="llm-save-btn">Save Settings</button>
+                </div>
+            </article>
+
+            <article id="auth-card">
+                <h3>Claude Authentication</h3>
+                <p id="auth-status"></p>
+            </article>
         </section>
     </main>
     <script src="/app.js"></script>
