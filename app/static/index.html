@@ -34,7 +34,10 @@
         </section>
         <section id="queue" hidden>
             <h2>Processing Queue</h2>
-            <p>Track the progress of your video processing jobs. View status, cancel jobs, and monitor the pipeline.</p>
+            <div id="queue-container">
+                <p id="queue-empty-state" class="empty-state">No processing jobs yet. Go to the Browse tab to find videos and add them to the queue.</p>
+                <div id="queue-job-list"></div>
+            </div>
         </section>
         <section id="summaries" hidden>
             <h2>Summaries</h2>
