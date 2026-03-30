@@ -13,7 +13,7 @@ The backend is fully implemented. This milestone delivers the frontend SPA and o
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Backend Filter Update** - Replace boolean members_only with visibility enum and add date range filtering
-- [ ] **Phase 2: Frontend Shell** - Tab navigation, dark theme, responsive layout, and shared API/fetch utilities
+- [x] **Phase 2: Frontend Shell** - Tab navigation, dark theme, responsive layout, and shared API/fetch utilities (completed 2026-03-30)
 - [ ] **Phase 3: Browse & Queue Tab** - URL input, video fetching, filtering, multi-select, and queue submission
 - [ ] **Phase 4: Queue & Progress Tab** - Job list with status badges, progress bars, cancel, and auto-refresh polling
 - [ ] **Phase 5: Summaries Tab** - Summary list, expandable detail view, copy, markdown export, and delete
@@ -42,11 +42,11 @@ Plans:
   1. User sees a 4-tab navigation bar (Browse, Queue, Summaries, Settings) and can switch between tabs
   2. App renders in Pico CSS dark theme by default with responsive layout on desktop and mobile viewports
   3. A shared API helper function exists that handles fetch calls with loading states and error display
-**Plans**: TBD
+**Plans**: 1 plan
 **UI hint**: yes
 
 Plans:
-- [ ] 02-01: TBD
+- [x] 02-01-PLAN.md — HTML shell, tab routing, custom CSS, and apiFetch API helper
 
 ### Phase 3: Browse & Queue Tab
 **Goal**: Users can discover videos and submit them for processing
@@ -115,7 +115,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Backend Filter Update | 0/1 | Not started | - |
-| 2. Frontend Shell | 0/0 | Not started | - |
+| 2. Frontend Shell | 1/1 | Complete   | 2026-03-30 |
 | 3. Browse & Queue Tab | 0/0 | Not started | - |
 | 4. Queue & Progress Tab | 0/0 | Not started | - |
 | 5. Summaries Tab | 0/0 | Not started | - |

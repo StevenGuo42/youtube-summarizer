@@ -47,9 +47,9 @@ Requirements for completing the frontend milestone. Each maps to roadmap phases.
 
 ### Frontend Core
 
-- [ ] **CORE-01**: Tab navigation works with Pico CSS dark theme default
-- [ ] **CORE-02**: Responsive layout using semantic HTML and Pico CSS patterns
-- [ ] **CORE-03**: All API calls use fetch() with proper error handling and loading states
+- [x] **CORE-01**: Tab navigation works with Pico CSS dark theme default
+- [x] **CORE-02**: Responsive layout using semantic HTML and Pico CSS patterns
+- [x] **CORE-03**: All API calls use fetch() with proper error handling and loading states
 
 ## v2 Requirements
 
@@ -84,9 +84,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BACK-02 | Phase 1 | Complete |
 | BACK-03 | Phase 1 | Complete |
 | BACK-04 | Phase 1 | Complete |
-| CORE-01 | Phase 2 | Pending |
-| CORE-02 | Phase 2 | Pending |
-| CORE-03 | Phase 2 | Pending |
+| CORE-01 | Phase 2 | Complete |
+| CORE-02 | Phase 2 | Complete |
+| CORE-03 | Phase 2 | Complete |
 | BRWS-01 | Phase 3 | Pending |
 | BRWS-02 | Phase 3 | Pending |
 | BRWS-03 | Phase 3 | Pending |
