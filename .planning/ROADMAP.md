@@ -75,7 +75,7 @@ Plans:
 **UI hint**: yes
 
 Plans:
-- [ ] 04-01: TBD
+- [x] 04-01-PLAN.md --- Queue tab HTML/CSS skeleton, all JS for job list, progress bars, status badges, polling, and cancel
 
 ### Phase 5: Summaries Tab
 **Goal**: Users can review, share, and manage their completed summaries
@@ -117,6 +117,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 1. Backend Filter Update | 0/1 | Not started | - |
 | 2. Frontend Shell | 1/1 | Complete   | 2026-03-30 |
 | 3. Browse & Queue Tab | 1/1 | Complete   | 2026-03-30 |
-| 4. Queue & Progress Tab | 0/0 | Not started | - |
+| 4. Queue & Progress Tab | 1/1 | Complete   | 2026-03-30 |
 | 5. Summaries Tab | 0/0 | Not started | - |
 | 6. Settings Tab | 0/0 | Not started | - |

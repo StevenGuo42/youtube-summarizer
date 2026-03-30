@@ -24,11 +24,11 @@ Requirements for completing the frontend milestone. Each maps to roadmap phases.
 
 ### Queue Tab
 
-- [ ] **QUEU-01**: User can view all jobs with their current status (pending, downloading, transcribing, extracting, summarizing, done, failed)
-- [ ] **QUEU-02**: Each job displays a status badge reflecting its pipeline step
-- [ ] **QUEU-03**: Each job shows a progress bar indicating pipeline step progress
-- [ ] **QUEU-04**: User can cancel pending or in-progress jobs
-- [ ] **QUEU-05**: Queue view auto-refreshes via polling (every 2-3 seconds)
+- [x] **QUEU-01**: User can view all jobs with their current status (pending, downloading, transcribing, extracting, summarizing, done, failed)
+- [x] **QUEU-02**: Each job displays a status badge reflecting its pipeline step
+- [x] **QUEU-03**: Each job shows a progress bar indicating pipeline step progress
+- [x] **QUEU-04**: User can cancel pending or in-progress jobs
+- [x] **QUEU-05**: Queue view auto-refreshes via polling (every 2-3 seconds)
 
 ### Summaries Tab
 
@@ -92,11 +92,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BRWS-03 | Phase 3 | Complete |
 | BRWS-04 | Phase 3 | Complete |
 | BRWS-05 | Phase 3 | Complete |
-| QUEU-01 | Phase 4 | Pending |
-| QUEU-02 | Phase 4 | Pending |
-| QUEU-03 | Phase 4 | Pending |
-| QUEU-04 | Phase 4 | Pending |
-| QUEU-05 | Phase 4 | Pending |
+| QUEU-01 | Phase 4 | Complete |
+| QUEU-02 | Phase 4 | Complete |
+| QUEU-03 | Phase 4 | Complete |
+| QUEU-04 | Phase 4 | Complete |
+| QUEU-05 | Phase 4 | Complete |
 | SUMM-01 | Phase 5 | Pending |
 | SUMM-02 | Phase 5 | Pending |
 | SUMM-03 | Phase 5 | Pending |
