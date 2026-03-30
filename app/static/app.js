@@ -1322,13 +1322,11 @@ function renderCookieStatus() {
 
 async function uploadCookies(file) {
   const card = document.getElementById('cookie-card');
-  card.setAttribute('aria-busy', 'true');
   clearError(card);
   try {
     const formData = new FormData();
     formData.append('file', file);
-    const res = await fetch('/api/auth/cookies', { method: 'POST', body: formData });
-    if (!res.ok) throw new Error('Upload failed');
+    await apiFetch('/api/auth/cookies', { method: 'POST', body: formData, container: card });
     // Refresh cookie status
     const status = await apiFetch('/api/auth/status');
     settingsState.cookieStatus = status;
@@ -1339,9 +1337,10 @@ async function uploadCookies(file) {
     updatePasteBtn();
     showSuccess(card, 'Cookies uploaded successfully.');
   } catch (err) {
-    showError(card, 'Failed to upload cookies. Check the file format and try again.');
-  } finally {
-    card.removeAttribute('aria-busy');
+    // apiFetch already shows error in card container — only show fallback if no container error
+    if (!card.querySelector('article[role="alert"]')) {
+      showError(card, 'Failed to upload cookies. Check the file format and try again.');
+    }
   }
 }
 
@@ -1376,6 +1375,7 @@ async function saveLlmConfig() {
       body: { model, custom_prompt },
       container: card,
     });
+    card.removeAttribute('aria-busy');
     showSuccess(card, 'Settings saved.');
   } catch (err) {
     // apiFetch already shows error in the container
@@ -1396,6 +1396,12 @@ function renderAuthStatus() {
 
   if (settingsState.authStatus.loggedIn) {
     el.innerHTML = '<span class="settings-status-ok">&#10003; Authenticated via OAuth</span>';
+  } else if (settingsState.authStatus.cli_error) {
+    el.innerHTML = '<span class="settings-status-fail">&#10007; Could not check auth status</span>';
+    const helpP = document.createElement('p');
+    helpP.className = 'settings-help';
+    helpP.textContent = 'Ensure the Claude CLI is installed and accessible.';
+    card.appendChild(helpP);
   } else {
     el.innerHTML = '<span class="settings-status-fail">&#10007; Not authenticated</span>';
     const helpP = document.createElement('p');
