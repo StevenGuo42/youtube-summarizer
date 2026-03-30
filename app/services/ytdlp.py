@@ -141,7 +141,7 @@ async def list_channel_videos(
         import yt_dlp
 
         if date_from or date_to:
-            opts["daterange"] = yt_dlp.utils.DateRange(date_from or "", date_to or "")
+            opts["daterange"] = yt_dlp.utils.DateRange(date_from, date_to)
 
         with yt_dlp.YoutubeDL(opts) as ydl:
             result = ydl.extract_info(url, download=False)
