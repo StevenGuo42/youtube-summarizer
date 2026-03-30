@@ -28,6 +28,9 @@ function switchTab(tabId) {
       link.removeAttribute('aria-current');
     }
   }
+
+  // Queue polling: start when visible, stop when hidden
+  if (tabId === 'queue') { startPolling(); } else { stopPolling(); }
 }
 
 function getTabFromHash() {
@@ -610,4 +613,246 @@ document.addEventListener('DOMContentLoaded', () => {
     form.addEventListener('submit', handleBrowseFetch);
   }
   bindFilterEvents();
+});
+
+// --- Queue Tab ---
+
+const queueState = {
+  jobs: [],
+  pollInterval: null,
+  pollRate: null,
+};
+
+const STEP_MAP = {
+  downloading: { index: 0, label: 'Downloading...' },
+  transcribing: { index: 1, label: 'Transcribing...' },
+  extracting_keyframes: { index: 2, label: 'Extracting keyframes...' },
+  deduplicating: { index: 2, label: 'Deduplicating...' },
+  ocr: { index: 3, label: 'Running OCR...' },
+  summarizing: { index: 4, label: 'Summarizing...' },
+  cleanup: { index: 4, label: 'Finishing up...' },
+};
+const TOTAL_SEGMENTS = 5;
+
+function formatCreatedTime(isoString) {
+  const date = new Date(isoString);
+  const diffMs = Date.now() - date.getTime();
+  if (diffMs < 60000) return 'Just now';
+  if (diffMs < 3600000) return `${Math.floor(diffMs / 60000)} min ago`;
+  if (diffMs < 86400000) return `${Math.floor(diffMs / 3600000)}h ago`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    + ', ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+function getProgressSegments(job) {
+  const segments = new Array(TOTAL_SEGMENTS).fill('pending');
+  let label = 'Waiting...';
+
+  if (job.status === 'pending') {
+    return { segments, label };
+  }
+
+  if (job.status === 'done') {
+    segments.fill('completed');
+    return { segments, label: 'Complete' };
+  }
+
+  const stepInfo = STEP_MAP[job.current_step];
+  const activeIndex = stepInfo ? stepInfo.index : -1;
+
+  if (job.status === 'cancelled') {
+    for (let i = 0; i < activeIndex && i < TOTAL_SEGMENTS; i++) {
+      segments[i] = 'completed';
+    }
+    return { segments, label: 'Cancelled' };
+  }
+
+  if (job.status === 'failed') {
+    for (let i = 0; i < activeIndex && i < TOTAL_SEGMENTS; i++) {
+      segments[i] = 'completed';
+    }
+    if (activeIndex >= 0 && activeIndex < TOTAL_SEGMENTS) {
+      segments[activeIndex] = 'failed';
+    }
+    const stepName = stepInfo ? stepInfo.label.replace('...', '') : job.current_step;
+    return { segments, label: `Failed at ${stepName}` };
+  }
+
+  if (job.status === 'processing') {
+    for (let i = 0; i < activeIndex && i < TOTAL_SEGMENTS; i++) {
+      segments[i] = 'completed';
+    }
+    if (activeIndex >= 0 && activeIndex < TOTAL_SEGMENTS) {
+      segments[activeIndex] = 'active';
+    }
+    label = stepInfo ? stepInfo.label : 'Processing...';
+    return { segments, label };
+  }
+
+  return { segments, label };
+}
+
+// Badge text and CSS class mapping: badge-pending, badge-processing, badge-done, badge-failed, badge-cancelled
+const BADGE_TEXT = {
+  pending: 'PENDING',
+  processing: 'PROCESSING',
+  done: 'COMPLETE',
+  failed: 'FAILED',
+  cancelled: 'CANCELLED',
+};
+
+function renderJobCard(job) {
+  const article = document.createElement('article');
+  article.className = 'job-card' + ((job.status === 'cancelled' || job.status === 'failed') ? ' dimmed' : '');
+  article.dataset.jobId = job.id;
+
+  const { segments, label } = getProgressSegments(job);
+  const badgeText = BADGE_TEXT[job.status] || job.status.toUpperCase();
+
+  const segmentsHtml = segments.map(s => `<div class="progress-segment ${s}"></div>`).join('');
+
+  let errorHtml = '';
+  if (job.status === 'failed' && job.error) {
+    errorHtml = `<small class="job-error" title="${job.error.replace(/"/g, '&quot;')}">${job.error}</small>`;
+  }
+
+  let warningsHtml = '';
+  try {
+    const warnings = job.warnings ? JSON.parse(job.warnings) : [];
+    if (warnings.length > 0) {
+      const items = warnings.map(w => `<li>${w}</li>`).join('');
+      warningsHtml = `<details class="job-warnings"><summary>${warnings.length} warning(s)</summary><ul>${items}</ul></details>`;
+    }
+  } catch (e) {
+    // Invalid JSON, skip warnings
+  }
+
+  let actionsHtml = '';
+  if (job.status === 'pending' || job.status === 'processing') {
+    actionsHtml = `<button class="outline cancel-btn" data-job-id="${job.id}">Cancel Job</button>`;
+  } else if (job.status === 'done') {
+    actionsHtml = `<a href="#summaries" class="view-summary-link" data-job-id="${job.id}">View Summary</a>`;
+  }
+
+  article.innerHTML = `
+    <img src="${job.thumbnail_url || ''}" alt="" loading="lazy">
+    <div class="job-card-content">
+      <div class="job-card-header">
+        <strong>${job.title || 'Untitled'}</strong>
+        <small class="created-time">${formatCreatedTime(job.created_at)}</small>
+      </div>
+      <small style="color:#7b8495">${job.channel || 'Unknown'} / ${formatDuration(job.duration)} / ${job.dedup_mode} / ${job.keyframe_mode}</small>
+      <div style="margin-top:0.25rem">
+        <mark class="badge-${job.status}">${badgeText}</mark>
+        <small class="step-label">${label}</small>
+      </div>
+      <div class="progress-bar">${segmentsHtml}</div>
+      ${errorHtml}
+      ${warningsHtml}
+      <div class="job-card-actions">${actionsHtml}</div>
+    </div>
+  `;
+
+  return article;
+}
+
+function renderJobs() {
+  const jobList = document.getElementById('queue-job-list');
+  const emptyState = document.getElementById('queue-empty-state');
+  if (!jobList) return;
+
+  if (queueState.jobs.length === 0) {
+    if (emptyState) emptyState.hidden = false;
+    jobList.innerHTML = '';
+    return;
+  }
+
+  if (emptyState) emptyState.hidden = true;
+  jobList.innerHTML = '';
+  for (const job of queueState.jobs) {
+    jobList.appendChild(renderJobCard(job));
+  }
+}
+
+async function fetchJobs() {
+  try {
+    const jobs = await apiFetch('/api/queue', { container: document.getElementById('queue-container') });
+    queueState.jobs = jobs;
+    renderJobs();
+    adjustPollingRate();
+  } catch (err) {
+    // apiFetch already shows error in the container
+  }
+}
+
+async function cancelJob(jobId) {
+  // Optimistic UI update
+  const card = document.querySelector(`[data-job-id="${jobId}"]`);
+  if (card) {
+    card.classList.add('dimmed');
+    const badge = card.querySelector('[class^="badge-"]');
+    if (badge) {
+      badge.className = 'badge-cancelled';
+      badge.textContent = 'CANCELLED';
+    }
+  }
+
+  try {
+    await apiFetch(`/api/queue/${jobId}`, { method: 'DELETE' });
+    // Next poll will confirm the state
+  } catch (err) {
+    // Revert optimistic update on non-404 errors
+    if (card && !err.message.includes('not found')) {
+      card.classList.remove('dimmed');
+      console.error('Cancel failed:', err);
+    }
+  }
+}
+
+function hasActiveJobs() {
+  return queueState.jobs.some(j => j.status === 'pending' || j.status === 'processing');
+}
+
+function adjustPollingRate() {
+  const targetRate = hasActiveJobs() ? 3000 : 10000;
+  if (queueState.pollRate === targetRate) return;
+
+  if (queueState.pollInterval) {
+    clearInterval(queueState.pollInterval);
+  }
+  queueState.pollInterval = setInterval(fetchJobs, targetRate);
+  queueState.pollRate = targetRate;
+}
+
+function startPolling() {
+  if (queueState.pollInterval) return;
+  fetchJobs();
+  const rate = hasActiveJobs() ? 3000 : 10000;
+  queueState.pollInterval = setInterval(fetchJobs, rate);
+  queueState.pollRate = rate;
+}
+
+function stopPolling() {
+  clearInterval(queueState.pollInterval);
+  queueState.pollInterval = null;
+  queueState.pollRate = null;
+}
+
+// Queue tab: event delegation for cancel buttons and view summary links
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('cancel-btn')) {
+    const jobId = e.target.dataset.jobId;
+    if (jobId) cancelJob(jobId);
+  }
+  if (e.target.classList.contains('view-summary-link')) {
+    e.preventDefault();
+    switchTab('summaries');
+  }
+});
+
+// Queue tab: start polling if queue is the active tab on page load
+document.addEventListener('DOMContentLoaded', () => {
+  if (getTabFromHash() === 'queue') {
+    startPolling();
+  }
 });
