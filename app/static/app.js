@@ -34,6 +34,9 @@ function switchTab(tabId) {
 
   // Summaries: fetch fresh data on tab show
   if (tabId === 'summaries') { fetchSummaries(); }
+
+  // Settings: re-fetch on every tab activation
+  if (tabId === 'settings') { loadSettings(); }
 }
 
 function getTabFromHash() {
@@ -516,7 +519,7 @@ async function submitSingleToQueue(videoId) {
       body: { video_ids: [videoId], dedup_mode: dedupMode, keyframe_mode: keyframeMode },
       container: resultsDiv,
     });
-    showSuccess(resultsDiv, '1 video added to queue.');
+    showSuccess(resultsDiv, '1 video added to queue.', { href: '#queue', text: 'View Queue' });
   } catch (err) {
     // apiFetch already handles error display
   }
@@ -536,7 +539,7 @@ async function submitSelectedToQueue() {
       body: { video_ids: videoIds, dedup_mode: dedupMode, keyframe_mode: keyframeMode },
       container: resultsDiv,
     });
-    showSuccess(resultsDiv, `${videoIds.length} video(s) added to queue.`);
+    showSuccess(resultsDiv, videoIds.length + ' video(s) added to queue.', { href: '#queue', text: 'View Queue' });
     // Clear selection (per D-14)
     browseState.selected.clear();
     document.querySelectorAll('.video-check').forEach(cb => { cb.checked = false; });
@@ -548,14 +551,18 @@ async function submitSelectedToQueue() {
   }
 }
 
-function showSuccess(container, message) {
-  const successDiv = document.getElementById('queue-success') || container;
-  successDiv.innerHTML = '';
+function showSuccess(container, message, link) {
+  // Remove any existing success message in this container
+  const existing = container.querySelector('.success-msg');
+  if (existing) existing.remove();
   const article = document.createElement('article');
   article.className = 'success-msg';
-  article.innerHTML = `${message} <a href="#queue" onclick="switchTab('queue')">View Queue</a>`;
-  successDiv.appendChild(article);
-  // Auto-dismiss after 5s (CSS animation handles visual fade, JS removes from DOM)
+  if (link) {
+    article.innerHTML = message + ' <a href="' + link.href + '">' + link.text + '</a>';
+  } else {
+    article.textContent = message;
+  }
+  container.appendChild(article);
   setTimeout(() => { article.remove(); }, 5500);
 }
 
@@ -1253,4 +1260,218 @@ document.addEventListener('DOMContentLoaded', () => {
   if (getTabFromHash() === 'summaries') {
     fetchSummaries();
   }
+});
+
+// --- Settings Tab ---
+
+const settingsState = {
+  cookieStatus: { exists: false, modified: null },
+  llmConfig: { model: '', custom_prompt: null },
+  defaultPrompt: '',
+  authStatus: { authenticated: false, method: '' },
+};
+
+async function loadSettings() {
+  const section = document.getElementById('settings');
+  section.setAttribute('aria-busy', 'true');
+  try {
+    const [cookieRes, llmRes, authRes] = await Promise.all([
+      apiFetch('/api/auth/status'),
+      apiFetch('/api/settings/llm'),
+      apiFetch('/api/settings/auth/claude'),
+    ]);
+    settingsState.cookieStatus = cookieRes;
+    settingsState.llmConfig = { model: llmRes.model, custom_prompt: llmRes.custom_prompt };
+    settingsState.defaultPrompt = llmRes.default_prompt;
+    settingsState.authStatus = authRes;
+    renderCookieStatus();
+    renderLlmConfig();
+    renderAuthStatus();
+  } catch (err) {
+    showError(section, 'Could not load settings. Check that the server is running and try again.');
+  } finally {
+    section.removeAttribute('aria-busy');
+  }
+}
+
+function renderCookieStatus() {
+  const el = document.getElementById('cookie-status');
+  if (!el) return;
+  if (settingsState.cookieStatus.exists) {
+    el.innerHTML = '<span class="settings-status-ok">Cookies loaded</span> (uploaded ' +
+      formatCreatedTime(settingsState.cookieStatus.modified) +
+      ') <button class="outline settings-clear-btn">Clear Cookies</button>';
+  } else {
+    el.innerHTML = '<span style="color:#7b8495">No cookies loaded</span>';
+  }
+}
+
+async function uploadCookies(file) {
+  const card = document.getElementById('cookie-card');
+  card.setAttribute('aria-busy', 'true');
+  clearError(card);
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/api/auth/cookies', { method: 'POST', body: formData });
+    if (!res.ok) throw new Error('Upload failed');
+    // Refresh cookie status
+    const status = await apiFetch('/api/auth/status');
+    settingsState.cookieStatus = status;
+    renderCookieStatus();
+    // Clear paste textarea if it has content
+    const pasteArea = document.getElementById('cookie-paste');
+    if (pasteArea) pasteArea.value = '';
+    updatePasteBtn();
+    showSuccess(card, 'Cookies uploaded successfully.');
+  } catch (err) {
+    showError(card, 'Failed to upload cookies. Check the file format and try again.');
+  } finally {
+    card.removeAttribute('aria-busy');
+  }
+}
+
+async function clearCookies() {
+  if (!confirm('Clear cookies? Members-only content will no longer be accessible.')) return;
+  const card = document.getElementById('cookie-card');
+  try {
+    await apiFetch('/api/auth/cookies', { method: 'DELETE', container: card });
+    settingsState.cookieStatus = { exists: false, modified: null };
+    renderCookieStatus();
+    showSuccess(card, 'Cookies cleared.');
+  } catch (err) {
+    showError(card, 'Failed to clear cookies. Try again.');
+  }
+}
+
+function renderLlmConfig() {
+  const modelInput = document.getElementById('llm-model');
+  const promptArea = document.getElementById('llm-prompt');
+  if (modelInput) modelInput.value = settingsState.llmConfig.model;
+  if (promptArea) promptArea.value = settingsState.llmConfig.custom_prompt || '';
+}
+
+async function saveLlmConfig() {
+  const card = document.getElementById('llm-card');
+  const model = document.getElementById('llm-model').value.trim();
+  const promptVal = document.getElementById('llm-prompt').value.trim();
+  const custom_prompt = promptVal === '' ? null : promptVal;
+  try {
+    await apiFetch('/api/settings/llm', {
+      method: 'POST',
+      body: { model, custom_prompt },
+      container: card,
+    });
+    showSuccess(card, 'Settings saved.');
+  } catch (err) {
+    // apiFetch already shows error in the container
+  }
+}
+
+function resetPromptToDefault() {
+  document.getElementById('llm-prompt').value = settingsState.defaultPrompt;
+}
+
+function renderAuthStatus() {
+  const el = document.getElementById('auth-status');
+  if (!el) return;
+  const card = document.getElementById('auth-card');
+  // Remove any previous instruction text
+  const prevHelp = card.querySelector('.settings-help');
+  if (prevHelp) prevHelp.remove();
+
+  if (settingsState.authStatus.authenticated) {
+    el.innerHTML = '<span class="settings-status-ok">&#10003; Authenticated via OAuth</span>';
+  } else {
+    el.innerHTML = '<span class="settings-status-fail">&#10007; Not authenticated</span>';
+    const helpP = document.createElement('p');
+    helpP.className = 'settings-help';
+    helpP.innerHTML = 'Run <code>claude auth login</code> in your terminal to authenticate.';
+    card.appendChild(helpP);
+  }
+}
+
+function updatePasteBtn() {
+  const pasteArea = document.getElementById('cookie-paste');
+  const pasteBtn = document.getElementById('cookie-paste-btn');
+  if (pasteArea && pasteBtn) {
+    pasteBtn.disabled = pasteArea.value.trim() === '';
+  }
+}
+
+// Settings tab: event handlers
+document.addEventListener('DOMContentLoaded', () => {
+  // Drop zone drag-and-drop
+  const dropZone = document.getElementById('cookie-drop-zone');
+  if (dropZone) {
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('drag-over'); });
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file && file.name.endsWith('.txt')) {
+        uploadCookies(file);
+      } else {
+        showError(document.getElementById('cookie-card'), 'Please upload a .txt file.');
+      }
+    });
+    // Click on drop zone triggers file picker (unless clicking the Browse Files button itself)
+    dropZone.addEventListener('click', (e) => {
+      if (e.target.id !== 'cookie-file-btn') {
+        document.getElementById('cookie-file-input').click();
+      }
+    });
+  }
+
+  // Browse Files button
+  const fileBtn = document.getElementById('cookie-file-btn');
+  if (fileBtn) {
+    fileBtn.addEventListener('click', (e) => {
+      e.stopPropagation(); // Don't trigger drop zone click
+      document.getElementById('cookie-file-input').click();
+    });
+  }
+
+  // File input change
+  const fileInput = document.getElementById('cookie-file-input');
+  if (fileInput) {
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      if (file && file.name.endsWith('.txt')) {
+        uploadCookies(file);
+      } else if (file) {
+        showError(document.getElementById('cookie-card'), 'Please upload a .txt file.');
+      }
+      fileInput.value = ''; // Reset so same file can be re-selected
+    });
+  }
+
+  // Paste textarea input — enable/disable paste upload button
+  const pasteArea = document.getElementById('cookie-paste');
+  if (pasteArea) {
+    pasteArea.addEventListener('input', updatePasteBtn);
+  }
+
+  // Paste upload button click
+  const pasteBtn = document.getElementById('cookie-paste-btn');
+  if (pasteBtn) {
+    pasteBtn.addEventListener('click', () => {
+      const text = document.getElementById('cookie-paste').value.trim();
+      if (!text) return;
+      const blob = new Blob([text], { type: 'text/plain' });
+      const file = new File([blob], 'cookies.txt', { type: 'text/plain' });
+      uploadCookies(file);
+    });
+  }
+
+  // LLM and cookie clear buttons — event delegation
+  document.addEventListener('click', (e) => {
+    if (e.target.id === 'llm-save-btn') saveLlmConfig();
+    if (e.target.id === 'llm-reset-btn') resetPromptToDefault();
+    if (e.target.classList.contains('settings-clear-btn')) clearCookies();
+  });
+
+  // Settings tab initial load on page load if hash is #settings
+  if (getTabFromHash() === 'settings') { loadSettings(); }
 });
