@@ -73,6 +73,7 @@ class WorkerConfigResponse(BaseModel):
     batch_size: int
 
 
+# Kept for v2: worker settings UI is ENH-06 (no frontend consumer yet)
 @router.get("/worker")
 async def get_worker_config() -> WorkerConfigResponse:
     db = await get_db()
@@ -89,6 +90,7 @@ async def get_worker_config() -> WorkerConfigResponse:
         await db.close()
 
 
+# Kept for v2: worker settings UI is ENH-06 (no frontend consumer yet)
 @router.post("/worker")
 async def save_worker_config(config: WorkerConfig):
     db = await get_db()

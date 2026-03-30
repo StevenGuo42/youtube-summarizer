@@ -68,6 +68,7 @@ async def list_jobs():
         await db.close()
 
 
+# Kept for v2: single-job detail view for future job detail page (no frontend consumer yet)
 @router.get("/{job_id}")
 async def get_job(job_id: str):
     """Get a single job's status."""
