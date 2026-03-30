@@ -65,3 +65,104 @@ nav a[data-tab] {
 @keyframes fade-out {
   to { opacity: 0; height: 0; padding: 0; margin: 0; overflow: hidden; }
 }
+
+/* Queue tab: job card layout */
+.job-card {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+.job-card img {
+  width: 120px;
+  flex-shrink: 0;
+  border-radius: 4px;
+}
+.job-card-content {
+  flex: 1;
+  min-width: 0;
+}
+.job-card.dimmed {
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+.job-card.dimmed:hover {
+  opacity: 1;
+}
+
+/* Queue tab: status badges */
+[class^="badge-"] {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: inline-block;
+}
+.badge-pending { background: rgba(123,132,149,0.15); color: #7b8495; }
+.badge-processing { background: rgba(1,170,255,0.15); color: #01aaff; }
+.badge-done { background: rgba(46,160,67,0.15); color: #2ea043; }
+.badge-failed { background: rgba(184,63,59,0.15); color: #b83f3b; }
+.badge-cancelled { background: rgba(123,132,149,0.15); color: #7b8495; }
+
+/* Queue tab: progress bar */
+.progress-bar {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(123,132,149,0.2);
+  overflow: hidden;
+  margin: 0.5rem 0;
+}
+.progress-segment {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: transparent;
+}
+.progress-segment.completed { background: #2ea043; }
+.progress-segment.active { background: #01aaff; animation: pulse 1.5s infinite; }
+.progress-segment.failed { background: #b83f3b; }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Queue tab: cancel button */
+.cancel-btn { color: #b83f3b; border-color: #b83f3b; }
+
+/* Queue tab: error and warnings */
+.job-error {
+  color: #b83f3b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+.job-warnings { color: #7b8495; font-size: 0.875rem; }
+.job-warnings summary { cursor: pointer; }
+
+/* Queue tab: card header and layout */
+.step-label { color: #7b8495; }
+.job-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+.job-card-header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.created-time { color: #7b8495; white-space: nowrap; flex-shrink: 0; }
+.job-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.empty-state { color: #7b8495; }
