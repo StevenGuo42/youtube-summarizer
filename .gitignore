@@ -12,3 +12,4 @@ docs/superpowers/
 logs/
 .pytest_cache/
 tests/test_config.json
+.planning/

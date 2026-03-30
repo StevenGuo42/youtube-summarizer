@@ -71,11 +71,11 @@ Plans:
   2. Each job displays a progress bar that advances through pipeline stages
   3. User can cancel a pending or in-progress job
   4. Queue view updates automatically without manual refresh
-**Plans**: TBD
+**Plans**: 1 plan
 **UI hint**: yes
 
 Plans:
-- [x] 04-01-PLAN.md --- Queue tab HTML/CSS skeleton, all JS for job list, progress bars, status badges, polling, and cancel
+- [ ] 04-01-PLAN.md — Queue tab HTML/CSS and full JS for job cards, status badges, progress bars, cancel, and smart polling
 
 ### Phase 5: Summaries Tab
 **Goal**: Users can review, share, and manage their completed summaries
@@ -86,11 +86,11 @@ Plans:
   2. User can expand any summary to read the full structured content
   3. User can copy a summary to clipboard or download it as a .md file
   4. User can delete a summary and it disappears from the list
-**Plans**: TBD
+**Plans**: 1 plan
 **UI hint**: yes
 
 Plans:
-- [ ] 05-01: TBD
+- [ ] 05-01-PLAN.md — Summaries tab HTML/CSS skeleton and full JS for summary list (3 view styles), inline expand with markdown rendering, copy/export/delete actions
 
 ### Phase 6: Settings Tab
 **Goal**: Users can configure cookies, LLM settings, and verify auth status
@@ -117,6 +117,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 1. Backend Filter Update | 0/1 | Not started | - |
 | 2. Frontend Shell | 1/1 | Complete   | 2026-03-30 |
 | 3. Browse & Queue Tab | 1/1 | Complete   | 2026-03-30 |
-| 4. Queue & Progress Tab | 1/1 | Complete   | 2026-03-30 |
-| 5. Summaries Tab | 0/0 | Not started | - |
+| 4. Queue & Progress Tab | 0/1 | Planning complete | - |
+| 5. Summaries Tab | 0/1 | Planning complete | - |
 | 6. Settings Tab | 0/0 | Not started | - |
