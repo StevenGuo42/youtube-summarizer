@@ -32,11 +32,11 @@ Requirements for completing the frontend milestone. Each maps to roadmap phases.
 
 ### Summaries Tab
 
-- [ ] **SUMM-01**: User can view a list of all completed summaries with video title and date
-- [ ] **SUMM-02**: User can expand a summary to view the full structured content
-- [ ] **SUMM-03**: User can copy a summary to clipboard
-- [ ] **SUMM-04**: User can export a summary as markdown file
-- [ ] **SUMM-05**: User can delete individual summaries
+- [x] **SUMM-01**: User can view a list of all completed summaries with video title and date
+- [x] **SUMM-02**: User can expand a summary to view the full structured content
+- [x] **SUMM-03**: User can copy a summary to clipboard
+- [x] **SUMM-04**: User can export a summary as markdown file
+- [x] **SUMM-05**: User can delete individual summaries
 
 ### Settings Tab
 
@@ -97,11 +97,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | QUEU-03 | Phase 4 | Complete |
 | QUEU-04 | Phase 4 | Complete |
 | QUEU-05 | Phase 4 | Complete |
-| SUMM-01 | Phase 5 | Pending |
-| SUMM-02 | Phase 5 | Pending |
-| SUMM-03 | Phase 5 | Pending |
-| SUMM-04 | Phase 5 | Pending |
-| SUMM-05 | Phase 5 | Pending |
+| SUMM-01 | Phase 5 | Complete |
+| SUMM-02 | Phase 5 | Complete |
+| SUMM-03 | Phase 5 | Complete |
+| SUMM-04 | Phase 5 | Complete |
+| SUMM-05 | Phase 5 | Complete |
 | SETT-01 | Phase 6 | Pending |
 | SETT-02 | Phase 6 | Pending |
 | SETT-03 | Phase 6 | Pending |
