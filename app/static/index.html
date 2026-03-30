@@ -40,8 +40,18 @@
             </div>
         </section>
         <section id="summaries" hidden>
-            <h2>Summaries</h2>
-            <p>Browse your completed video summaries. Read, copy, export, or delete past results.</p>
+            <div class="summaries-header">
+                <h2>Summaries</h2>
+                <div class="view-toggle">
+                    <button class="active" data-view="compact">Compact</button>
+                    <button data-view="list">List</button>
+                    <button data-view="full">Full</button>
+                </div>
+            </div>
+            <p id="summaries-empty-state" class="empty-state">No summaries yet. Process some videos from the Browse tab to see results here.</p>
+            <div id="summaries-container">
+                <div id="summaries-list"></div>
+            </div>
         </section>
         <section id="settings" hidden>
             <h2>Settings</h2>
