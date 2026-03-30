@@ -116,12 +116,18 @@ async def search_channels(query: str) -> list[dict]:
 
 
 async def list_channel_videos(
-    channel_id: str, members_only: bool = False, page: int = 1, per_page: int = 20
+    channel_id: str, visibility: str = "all", page: int = 1, per_page: int = 20,
+    *, date_from: str | None = None, date_to: str | None = None
 ) -> list[dict]:
-    """List videos for a channel. Uses flat-playlist for speed."""
-    url = f"https://www.youtube.com/channel/{channel_id}/videos"
-    if members_only:
+    """List videos for a channel with visibility and date range filtering.
+
+    visibility: "all" (default), "public", or "members_only"
+    date_from/date_to: YYYYMMDD strings for date range filtering
+    """
+    if visibility == "members_only":
         url = f"https://www.youtube.com/channel/{channel_id}/membership"
+    else:
+        url = f"https://www.youtube.com/channel/{channel_id}/videos"
 
     end = page * per_page
     start = end - per_page + 1
@@ -134,20 +140,33 @@ async def list_channel_videos(
     def _list():
         import yt_dlp
 
+        if date_from or date_to:
+            opts["daterange"] = yt_dlp.utils.DateRange(date_from, date_to)
+
         with yt_dlp.YoutubeDL(opts) as ydl:
             result = ydl.extract_info(url, download=False)
             entries = result.get("entries", []) if result else []
-            return [
+
+            is_membership = visibility == "members_only"
+            videos = [
                 {
                     "id": e.get("id"),
                     "title": e.get("title"),
                     "duration": e.get("duration"),
                     "thumbnail": e.get("thumbnails", [{}])[-1].get("url") if e.get("thumbnails") else None,
                     "upload_date": e.get("upload_date"),
+                    "visibility": "members_only" if is_membership
+                        else ("members_only" if e.get("availability") in ("subscriber_only", "premium_only")
+                              else "public"),
                 }
                 for e in entries
                 if e
             ]
+
+            if visibility == "public":
+                videos = [v for v in videos if v["visibility"] == "public"]
+
+            return videos
 
     return await asyncio.to_thread(_list)
 
