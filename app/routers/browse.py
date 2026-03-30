@@ -10,6 +10,7 @@ from app.services.ytdlp import (
 router = APIRouter()
 
 
+# Kept for v2: search-by-name is a planned future feature (no frontend consumer yet)
 @router.get("/channel/search")
 async def search_channels(q: str):
     return await _search_channels(q)

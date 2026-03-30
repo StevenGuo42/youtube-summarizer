@@ -59,13 +59,13 @@ async def delete_summary(job_id: str):
     """Delete a summary and its job."""
     db = await get_db()
     try:
-        await db.execute("DELETE FROM summaries WHERE job_id = ?", (job_id,))
+        cursor = await db.execute("DELETE FROM summaries WHERE job_id = ?", (job_id,))
+        summary_deleted = cursor.rowcount > 0
         await db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
         await db.commit()
-        changed = db.total_changes > 0
     finally:
         await db.close()
-    if not changed:
+    if not summary_deleted:
         raise HTTPException(status_code=404, detail="Summary not found")
     return {"status": "deleted"}
 
