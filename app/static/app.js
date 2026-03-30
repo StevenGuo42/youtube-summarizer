@@ -198,7 +198,7 @@ function renderVideoCard(info) {
             </select>
           </label>
         </div>
-        <button id="card-add-queue" onclick="submitSingleToQueue('${info.id}')">Add to Queue</button>
+        <button class="single-queue-btn" data-video-id="${info.id}">Add to Queue</button>
       </div>
     </div>
   `;
@@ -438,11 +438,11 @@ function renderPagination(resultCount) {
   const startPage = Math.max(1, page - 2);
   const endPage = Math.min(maxPage, startPage + 4);
 
-  let html = `<button ${page <= 1 ? 'disabled' : ''} onclick="goToPage(${page - 1})">Previous</button>`;
+  let html = `<button class="page-btn" data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>Previous</button>`;
   for (let i = startPage; i <= endPage; i++) {
-    html += `<button ${i === page ? 'aria-current="page"' : ''} onclick="goToPage(${i})">${i}</button>`;
+    html += `<button class="page-btn" data-page="${i}" ${i === page ? 'aria-current="page"' : ''}>${i}</button>`;
   }
-  html += `<button ${!hasNext ? 'disabled' : ''} onclick="goToPage(${page + 1})">Next</button>`;
+  html += `<button class="page-btn" data-page="${page + 1}" ${!hasNext ? 'disabled' : ''}>Next</button>`;
   nav.innerHTML = html;
 }
 
@@ -623,6 +623,20 @@ document.addEventListener('DOMContentLoaded', () => {
     form.addEventListener('submit', handleBrowseFetch);
   }
   bindFilterEvents();
+});
+
+// Browse tab: event delegation for single-queue and pagination buttons
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('single-queue-btn')) {
+    const videoId = e.target.dataset.videoId;
+    if (videoId) submitSingleToQueue(videoId);
+    return;
+  }
+  if (e.target.classList.contains('page-btn') && !e.target.disabled) {
+    const page = parseInt(e.target.dataset.page, 10);
+    if (!isNaN(page)) goToPage(page);
+    return;
+  }
 });
 
 // --- Queue Tab ---
