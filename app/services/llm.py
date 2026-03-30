@@ -48,11 +48,13 @@ async def get_auth_status() -> dict:
         )
         stdout, _ = await proc.communicate()
         if proc.returncode == 0:
-            return json.loads(stdout.decode())
-        return {"loggedIn": False}
+            result = json.loads(stdout.decode())
+            result["cli_error"] = False
+            return result
+        return {"loggedIn": False, "cli_error": False}
     except Exception:
         logger.exception("Failed to check auth status")
-        return {"loggedIn": False}
+        return {"loggedIn": False, "cli_error": True}
 
 DEFAULT_PROMPT = """\
 You are summarizing a YouTube video. You will be given a timestamped transcript \
