@@ -31,6 +31,9 @@ function switchTab(tabId) {
 
   // Queue polling: start when visible, stop when hidden
   if (tabId === 'queue') { startPolling(); } else { stopPolling(); }
+
+  // Summaries: fetch fresh data on tab show
+  if (tabId === 'summaries') { fetchSummaries(); }
 }
 
 function getTabFromHash() {
@@ -854,5 +857,400 @@ document.addEventListener('click', (e) => {
 document.addEventListener('DOMContentLoaded', () => {
   if (getTabFromHash() === 'queue') {
     startPolling();
+  }
+});
+
+// --- Summaries Tab ---
+
+const summariesState = {
+  summaries: [],
+  cache: {},
+  viewStyle: localStorage.getItem('summaries-view-style') || 'compact',
+  expandedId: null,
+};
+
+async function fetchSummaries() {
+  try {
+    const data = await apiFetch('/api/summaries', {
+      container: document.getElementById('summaries-container'),
+    });
+    summariesState.summaries = data;
+    // Reset expanded ID if the expanded summary no longer exists
+    if (summariesState.expandedId && !data.some(s => s.job_id === summariesState.expandedId)) {
+      summariesState.expandedId = null;
+    }
+    renderSummaries();
+  } catch (err) {
+    // apiFetch already shows error in the container
+  }
+}
+
+function renderSummaries() {
+  const listEl = document.getElementById('summaries-list');
+  const emptyEl = document.getElementById('summaries-empty-state');
+  if (!listEl) return;
+
+  if (summariesState.summaries.length === 0) {
+    if (emptyEl) emptyEl.hidden = false;
+    listEl.innerHTML = '';
+    return;
+  }
+
+  if (emptyEl) emptyEl.hidden = true;
+  listEl.innerHTML = '';
+  for (const summary of summariesState.summaries) {
+    listEl.appendChild(renderSummaryCard(summary));
+  }
+  // Re-expand if one was expanded
+  if (summariesState.expandedId) {
+    expandSummary(summariesState.expandedId);
+  }
+}
+
+function renderSummaryCard(summary) {
+  const article = document.createElement('article');
+  const isActive = summariesState.expandedId === summary.job_id;
+  const cached = summariesState.cache[summary.job_id];
+  const tldr = cached && cached.structured ? cached.structured.tldr || '' : '';
+
+  if (summariesState.viewStyle === 'list') {
+    // Title-only list view
+    article.className = 'summary-card summary-list-item' + (isActive ? ' summary-card-active' : '');
+    article.dataset.jobId = summary.job_id;
+    article.innerHTML = `
+      <div class="summary-card" data-job-id="${summary.job_id}">
+        <div class="summary-card-content" style="flex-direction:row;align-items:center;gap:1rem">
+          <strong style="flex:1;min-width:0">${summary.title || 'Untitled'}</strong>
+          <small style="color:#7b8495;white-space:nowrap">${summary.channel || 'Unknown'} / ${formatCreatedTime(summary.created_at)}</small>
+          <div class="summary-actions" style="margin-top:0">
+            <button class="outline summary-btn summary-copy-btn" data-job-id="${summary.job_id}">Copy</button>
+            <button class="outline summary-btn summary-export-btn" data-job-id="${summary.job_id}">Export</button>
+            <button class="outline summary-btn summary-delete-btn" data-job-id="${summary.job_id}">Delete</button>
+          </div>
+        </div>
+      </div>
+    `;
+  } else {
+    // Compact or full view
+    const extraClass = summariesState.viewStyle === 'full' ? ' summary-full-card' : '';
+    article.className = 'summary-card' + extraClass + (isActive ? ' summary-card-active' : '');
+    article.dataset.jobId = summary.job_id;
+    article.innerHTML = `
+      <img src="${summary.thumbnail_url || ''}" alt="" loading="lazy">
+      <div class="summary-card-content">
+        <strong>${summary.title || 'Untitled'}</strong>
+        <small style="color:#7b8495">${summary.channel || 'Unknown'} / ${formatDuration(summary.duration)} / ${formatCreatedTime(summary.created_at)}</small>
+        <div class="summary-tldr">${tldr}</div>
+        <div class="summary-actions">
+          <button class="outline summary-btn summary-copy-btn" data-job-id="${summary.job_id}">Copy</button>
+          <button class="outline summary-btn summary-export-btn" data-job-id="${summary.job_id}">Export</button>
+          <button class="outline summary-btn summary-delete-btn" data-job-id="${summary.job_id}">Delete</button>
+        </div>
+      </div>
+    `;
+  }
+
+  return article;
+}
+
+function renderMarkdown(text) {
+  if (!text) return '';
+
+  // Step 0: Extract code blocks and replace with placeholders
+  const codeBlocks = [];
+  let result = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push(`<pre><code>${code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`);
+    return `<!--CODE_BLOCK_${idx}-->`;
+  });
+
+  // Step 1: Headings (shift down: # -> h3, ## -> h4, ### -> h5)
+  result = result.replace(/^### (.+)$/gm, '<h5>$1</h5>');
+  result = result.replace(/^## (.+)$/gm, '<h4>$1</h4>');
+  result = result.replace(/^# (.+)$/gm, '<h3>$1</h3>');
+
+  // Step 2: Inline formatting
+  result = result.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  result = result.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  result = result.replace(/`([^`]+)`/g, '<code>$1</code>');
+  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  // Step 3: Block-level elements (blockquotes, lists)
+  // Blockquotes
+  result = result.replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>');
+  // Merge consecutive blockquotes
+  result = result.replace(/<\/blockquote>\n<blockquote>/g, '\n');
+
+  // Unordered lists: consecutive lines starting with "- "
+  result = result.replace(/(^- .+$(\n^- .+$)*)/gm, (match) => {
+    const items = match.split('\n').map(line => `<li>${line.replace(/^- /, '')}</li>`).join('');
+    return `<ul>${items}</ul>`;
+  });
+
+  // Ordered lists: consecutive lines starting with "N. "
+  result = result.replace(/(^\d+\. .+$(\n^\d+\. .+$)*)/gm, (match) => {
+    const items = match.split('\n').map(line => `<li>${line.replace(/^\d+\. /, '')}</li>`).join('');
+    return `<ol>${items}</ol>`;
+  });
+
+  // Step 4: Paragraph breaks (empty lines -> <br>)
+  result = result.replace(/\n\n+/g, '<br><br>');
+  result = result.replace(/\n/g, '\n');
+
+  // Step 5: Restore code blocks
+  for (let i = 0; i < codeBlocks.length; i++) {
+    result = result.replace(`<!--CODE_BLOCK_${i}-->`, codeBlocks[i]);
+  }
+
+  return result;
+}
+
+function sanitizeHtml(html) {
+  if (!html) return '';
+  // Remove dangerous tags and their contents
+  let clean = html.replace(/<(script|iframe|object|embed)[^>]*>[\s\S]*?<\/\1>/gi, '');
+  // Remove self-closing variants
+  clean = clean.replace(/<(script|iframe|object|embed)[^>]*\/?>/gi, '');
+  // Remove on* event handler attributes
+  clean = clean.replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]*)/gi, '');
+  return clean;
+}
+
+async function expandSummary(jobId) {
+  // Toggle off if already expanded
+  if (summariesState.expandedId === jobId) {
+    collapseSummary();
+    return;
+  }
+
+  // Collapse any currently expanded summary
+  collapseSummary();
+  summariesState.expandedId = jobId;
+
+  // Mark the card as active
+  const article = document.querySelector(`article[data-job-id="${jobId}"]`);
+  if (article) article.classList.add('summary-card-active');
+
+  // Create expanded container as sibling after the card
+  const expandedDiv = document.createElement('div');
+  expandedDiv.className = 'summary-expanded';
+
+  if (article) article.after(expandedDiv);
+
+  if (summariesState.cache[jobId]) {
+    // Render from cache
+    renderExpandedContent(expandedDiv, summariesState.cache[jobId]);
+    updateCardTldr(jobId);
+  } else {
+    // Show loading state
+    expandedDiv.innerHTML = '<p aria-busy="true">Loading summary...</p>';
+    try {
+      const data = await apiFetch(`/api/summaries/${jobId}`);
+      summariesState.cache[jobId] = data;
+      // Verify we're still expanded on this job (user may have clicked elsewhere)
+      if (summariesState.expandedId === jobId) {
+        renderExpandedContent(expandedDiv, data);
+        updateCardTldr(jobId);
+      }
+    } catch (err) {
+      if (summariesState.expandedId === jobId) {
+        expandedDiv.innerHTML = '<p>Could not load this summary. Try again.</p>';
+      }
+    }
+  }
+}
+
+function renderExpandedContent(container, data) {
+  let structured = data.structured;
+  if (!structured && data.structured_summary) {
+    try {
+      structured = JSON.parse(data.structured_summary);
+    } catch (e) {
+      console.warn('Failed to parse structured_summary JSON:', e);
+    }
+  }
+
+  if (structured && structured.summary) {
+    container.innerHTML = `
+      <h3>${structured.title || ''}</h3>
+      <p><strong>TL;DR:</strong> ${structured.tldr || ''}</p>
+      <div class="summary-markdown">${sanitizeHtml(renderMarkdown(structured.summary))}</div>
+    `;
+  } else {
+    // Fallback to raw_response
+    const raw = data.raw_response || 'No summary content available.';
+    container.innerHTML = `<pre>${raw.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`;
+  }
+}
+
+function updateCardTldr(jobId) {
+  const cached = summariesState.cache[jobId];
+  if (!cached) return;
+  const structured = cached.structured || (cached.structured_summary ? JSON.parse(cached.structured_summary) : null);
+  if (!structured || !structured.tldr) return;
+  const card = document.querySelector(`article[data-job-id="${jobId}"]`);
+  if (!card) return;
+  const tldrDiv = card.querySelector('.summary-tldr');
+  if (tldrDiv && !tldrDiv.textContent.trim()) {
+    tldrDiv.textContent = structured.tldr;
+  }
+}
+
+function collapseSummary() {
+  const existing = document.querySelector('.summary-expanded');
+  if (existing) existing.remove();
+  const activeCard = document.querySelector('.summary-card-active');
+  if (activeCard) activeCard.classList.remove('summary-card-active');
+  summariesState.expandedId = null;
+}
+
+async function copySummary(jobId) {
+  let data = summariesState.cache[jobId];
+  if (!data) {
+    try {
+      data = await apiFetch(`/api/summaries/${jobId}`);
+      summariesState.cache[jobId] = data;
+    } catch (err) {
+      showError(document.getElementById('summaries-container'), 'Failed to copy to clipboard. Try selecting the text manually.');
+      return;
+    }
+  }
+
+  let structured = data.structured;
+  if (!structured && data.structured_summary) {
+    try { structured = JSON.parse(data.structured_summary); } catch (e) { /* ignore */ }
+  }
+
+  const markdownText = structured
+    ? `${structured.title || ''}\n\n${structured.tldr || ''}\n\n${structured.summary || ''}`
+    : data.raw_response || '';
+
+  try {
+    await navigator.clipboard.writeText(markdownText);
+    const btn = document.querySelector(`.summary-copy-btn[data-job-id="${jobId}"]`);
+    if (btn) {
+      btn.textContent = 'Copied!';
+      btn.style.color = '#2ea043';
+      setTimeout(() => {
+        btn.textContent = 'Copy';
+        btn.style.color = '';
+      }, 2000);
+    }
+  } catch (err) {
+    showError(document.getElementById('summaries-container'), 'Failed to copy to clipboard. Try selecting the text manually.');
+  }
+}
+
+async function exportSummary(jobId) {
+  try {
+    const res = await fetch(`/api/summaries/${jobId}/export`);
+    if (!res.ok) {
+      showError(document.getElementById('summaries-container'), 'Could not export summary. Try again.');
+      return;
+    }
+    const text = await res.text();
+
+    // Derive filename from title
+    const cached = summariesState.cache[jobId];
+    const summary = summariesState.summaries.find(s => s.job_id === jobId);
+    const title = (cached && cached.structured && cached.structured.title) || (summary && summary.title) || 'summary';
+    const filename = title.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase().slice(0, 60) + '.md';
+
+    const blob = new Blob([text], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showError(document.getElementById('summaries-container'), 'Could not export summary. Try again.');
+  }
+}
+
+async function deleteSummary(jobId) {
+  if (!confirm('Delete this summary? This action cannot be undone.')) return;
+
+  try {
+    await apiFetch(`/api/summaries/${jobId}`, { method: 'DELETE' });
+
+    // Remove card and expanded div from DOM
+    const card = document.querySelector(`article[data-job-id="${jobId}"]`);
+    if (card) {
+      const nextSibling = card.nextElementSibling;
+      if (nextSibling && nextSibling.classList.contains('summary-expanded')) {
+        nextSibling.remove();
+      }
+      card.remove();
+    }
+
+    // Update state
+    summariesState.summaries = summariesState.summaries.filter(s => s.job_id !== jobId);
+    delete summariesState.cache[jobId];
+    if (summariesState.expandedId === jobId) summariesState.expandedId = null;
+
+    // Show empty state if no summaries left
+    if (summariesState.summaries.length === 0) {
+      const emptyEl = document.getElementById('summaries-empty-state');
+      if (emptyEl) emptyEl.hidden = false;
+    }
+  } catch (err) {
+    showError(document.getElementById('summaries-container'), 'Could not delete summary. Try again.');
+  }
+}
+
+// Summaries tab: event delegation for card clicks, action buttons, and view toggle
+document.addEventListener('click', (e) => {
+  // View toggle buttons
+  if (e.target.dataset && e.target.dataset.view && e.target.closest('.view-toggle')) {
+    summariesState.viewStyle = e.target.dataset.view;
+    localStorage.setItem('summaries-view-style', summariesState.viewStyle);
+    // Update active state on toggle buttons
+    const toggleBtns = document.querySelectorAll('.view-toggle button');
+    toggleBtns.forEach(btn => btn.classList.remove('active'));
+    e.target.classList.add('active');
+    collapseSummary();
+    renderSummaries();
+    return;
+  }
+
+  // Action buttons: stop propagation to prevent card expand
+  if (e.target.classList.contains('summary-copy-btn')) {
+    e.stopPropagation();
+    copySummary(e.target.dataset.jobId);
+    return;
+  }
+  if (e.target.classList.contains('summary-export-btn')) {
+    e.stopPropagation();
+    exportSummary(e.target.dataset.jobId);
+    return;
+  }
+  if (e.target.classList.contains('summary-delete-btn')) {
+    e.stopPropagation();
+    deleteSummary(e.target.dataset.jobId);
+    return;
+  }
+
+  // Card click to expand (find closest summary-card ancestor)
+  const card = e.target.closest('.summary-card');
+  if (card && card.dataset.jobId && !e.target.closest('.summary-actions')) {
+    expandSummary(card.dataset.jobId);
+  }
+});
+
+// Summaries tab: init view toggle active state on DOMContentLoaded
+document.addEventListener('DOMContentLoaded', () => {
+  // Set correct active button based on saved preference
+  const activeView = summariesState.viewStyle;
+  const toggleBtn = document.querySelector(`.view-toggle button[data-view="${activeView}"]`);
+  if (toggleBtn) {
+    document.querySelectorAll('.view-toggle button').forEach(btn => btn.classList.remove('active'));
+    toggleBtn.classList.add('active');
+  }
+  // If summaries is the initial tab, fetch data
+  if (getTabFromHash() === 'summaries') {
+    fetchSummaries();
   }
 });
