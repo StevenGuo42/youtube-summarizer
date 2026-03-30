@@ -23,7 +23,14 @@
 
         <section id="browse">
             <h2>Browse &amp; Queue</h2>
-            <p>Search for YouTube videos, channels, and playlists. Select videos and add them to the processing queue.</p>
+            <p id="browse-empty-state">Search for YouTube videos, channels, and playlists. Select videos and add them to the processing queue.</p>
+            <form id="browse-fetch-form" role="search">
+                <div class="grid">
+                    <input type="url" id="browse-url-input" placeholder="Paste YouTube URL (video, channel, or playlist)" required>
+                    <button type="submit">Fetch</button>
+                </div>
+            </form>
+            <div id="browse-results"></div>
         </section>
         <section id="queue" hidden>
             <h2>Processing Queue</h2>
