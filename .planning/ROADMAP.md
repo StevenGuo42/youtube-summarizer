@@ -56,11 +56,11 @@ Plans:
   1. User can paste a YouTube URL (video, channel, or playlist) and see video metadata displayed
   2. User can filter displayed channel videos by visibility and date range
   3. User can select individual videos or use Select All, then add them to the queue with a single action
-**Plans**: TBD
+**Plans**: 1 plan
 **UI hint**: yes
 
 Plans:
-- [ ] 03-01: TBD
+- [x] 03-01-PLAN.md — Browse tab HTML/CSS skeleton, all JS for URL input, video display, filters, pagination, selection, and queue submission
 
 ### Phase 4: Queue & Progress Tab
 **Goal**: Users can monitor processing jobs and manage the queue
@@ -116,7 +116,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 |-------|----------------|--------|-----------|
 | 1. Backend Filter Update | 0/1 | Not started | - |
 | 2. Frontend Shell | 1/1 | Complete   | 2026-03-30 |
-| 3. Browse & Queue Tab | 0/0 | Not started | - |
+| 3. Browse & Queue Tab | 1/1 | Complete   | 2026-03-30 |
 | 4. Queue & Progress Tab | 0/0 | Not started | - |
 | 5. Summaries Tab | 0/0 | Not started | - |
 | 6. Settings Tab | 0/0 | Not started | - |

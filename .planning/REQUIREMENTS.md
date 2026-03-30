@@ -16,11 +16,11 @@ Requirements for completing the frontend milestone. Each maps to roadmap phases.
 
 ### Browse Tab
 
-- [ ] **BRWS-01**: User can enter a YouTube URL (video, channel, or playlist) and fetch video metadata
-- [ ] **BRWS-02**: User can filter channel videos by visibility (All / Public / Members Only)
-- [ ] **BRWS-03**: User can filter channel videos by date range (from / to date pickers)
-- [ ] **BRWS-04**: User can select multiple videos via checkboxes with Select All / Deselect All
-- [ ] **BRWS-05**: User can add selected videos to the processing queue
+- [x] **BRWS-01**: User can enter a YouTube URL (video, channel, or playlist) and fetch video metadata
+- [x] **BRWS-02**: User can filter channel videos by visibility (All / Public / Members Only)
+- [x] **BRWS-03**: User can filter channel videos by date range (from / to date pickers)
+- [x] **BRWS-04**: User can select multiple videos via checkboxes with Select All / Deselect All
+- [x] **BRWS-05**: User can add selected videos to the processing queue
 
 ### Queue Tab
 
@@ -87,11 +87,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CORE-01 | Phase 2 | Complete |
 | CORE-02 | Phase 2 | Complete |
 | CORE-03 | Phase 2 | Complete |
-| BRWS-01 | Phase 3 | Pending |
-| BRWS-02 | Phase 3 | Pending |
-| BRWS-03 | Phase 3 | Pending |
-| BRWS-04 | Phase 3 | Pending |
-| BRWS-05 | Phase 3 | Pending |
+| BRWS-01 | Phase 3 | Complete |
+| BRWS-02 | Phase 3 | Complete |
+| BRWS-03 | Phase 3 | Complete |
+| BRWS-04 | Phase 3 | Complete |
+| BRWS-05 | Phase 3 | Complete |
 | QUEU-01 | Phase 4 | Pending |
 | QUEU-02 | Phase 4 | Pending |
 | QUEU-03 | Phase 4 | Pending |
