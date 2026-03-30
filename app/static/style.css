@@ -1,0 +1,9 @@
+/* Tab content visibility -- Pico CSS has no built-in tab system */
+section[hidden] {
+  display: none !important;
+}
+
+/* Ensure nav links don't get underline decoration */
+nav a[data-tab] {
+  text-decoration: none;
+}
