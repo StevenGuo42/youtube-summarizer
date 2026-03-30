@@ -192,8 +192,8 @@ function renderVideoCard(info) {
               <option value="image" selected>Image</option>
               <option value="ocr">OCR</option>
               <option value="ocr+image">OCR + Image</option>
-              <option value="ocr+inline">OCR Inline</option>
-              <option value="ocr+inline+image">OCR Inline + Image</option>
+              <option value="ocr-inline">OCR Inline</option>
+              <option value="ocr-inline+image">OCR Inline + Image</option>
               <option value="none">None</option>
             </select>
           </label>
@@ -373,8 +373,8 @@ function buildResultsContainer(headerText, isChannel) {
         <option value="image" selected>Image</option>
         <option value="ocr">OCR</option>
         <option value="ocr+image">OCR + Image</option>
-        <option value="ocr+inline">OCR Inline</option>
-        <option value="ocr+inline+image">OCR Inline + Image</option>
+        <option value="ocr-inline">OCR Inline</option>
+        <option value="ocr-inline+image">OCR Inline + Image</option>
         <option value="none">None</option>
       </select>
     </label>
@@ -1268,7 +1268,7 @@ const settingsState = {
   cookieStatus: { exists: false, modified: null },
   llmConfig: { model: '', custom_prompt: null },
   defaultPrompt: '',
-  authStatus: { authenticated: false, method: '' },
+  authStatus: { loggedIn: false },
 };
 
 async function loadSettings() {
@@ -1380,7 +1380,7 @@ function renderAuthStatus() {
   const prevHelp = card.querySelector('.settings-help');
   if (prevHelp) prevHelp.remove();
 
-  if (settingsState.authStatus.authenticated) {
+  if (settingsState.authStatus.loggedIn) {
     el.innerHTML = '<span class="settings-status-ok">&#10003; Authenticated via OAuth</span>';
   } else {
     el.innerHTML = '<span class="settings-status-fail">&#10007; Not authenticated</span>';
