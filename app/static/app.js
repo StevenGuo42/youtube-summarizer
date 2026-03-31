@@ -153,6 +153,19 @@ async function fetchDefaultPrompt() {
   }
 }
 
+async function loadProcessingMode() {
+  const select = document.getElementById('processing-mode');
+  if (!select) return;
+  try {
+    const settings = await apiFetch('/api/settings/worker', { container: document.getElementById('browse-results') });
+    select.value = settings.processing_mode || 'sequential';
+    // Store batch_size so we can preserve it when changing mode
+    select.dataset.batchSize = settings.batch_size || 5;
+  } catch (err) {
+    // Default to sequential on error
+  }
+}
+
 const browseState = {
   urlType: null,      // 'video' | 'channel' | 'playlist' | null
   channelId: null,    // channel_id for channel URL fetches
@@ -406,6 +419,12 @@ function buildResultsContainer(headerText, isChannel) {
         <option value="none">None</option>
       </select>
     </label>
+    <label>Processing Mode
+      <select id="processing-mode">
+        <option value="sequential">Sequential</option>
+        <option value="batch">Batch</option>
+      </select>
+    </label>
   `;
   resultsDiv.appendChild(optionsDiv);
 
@@ -421,6 +440,7 @@ function buildResultsContainer(headerText, isChannel) {
   `;
   resultsDiv.appendChild(promptDiv);
   setTimeout(() => fetchDefaultPrompt(), 0);
+  setTimeout(() => loadProcessingMode(), 0);
 
   // Submit button (per D-13)
   const submitBtn = document.createElement('button');
@@ -1027,12 +1047,25 @@ document.addEventListener('click', (e) => {
 });
 
 // Queue tab: event delegation for checkboxes (select-all and per-job)
+// Browse tab: processing mode change handler
 document.addEventListener('change', (e) => {
   if (e.target.id === 'queue-select-all') {
     toggleSelectAll(e.target.checked);
   }
   if (e.target.classList.contains('job-check')) {
     toggleJobSelection(e.target.value, e.target.checked);
+  }
+  if (e.target.id === 'processing-mode') {
+    const mode = e.target.value;
+    const batchSize = parseInt(e.target.dataset.batchSize || '5', 10);
+    apiFetch('/api/settings/worker', {
+      method: 'POST',
+      body: { processing_mode: mode, batch_size: batchSize },
+      container: document.getElementById('browse-results'),
+    }).catch(() => {
+      // Revert select on error
+      e.target.value = mode === 'batch' ? 'sequential' : 'batch';
+    });
   }
 });
 
