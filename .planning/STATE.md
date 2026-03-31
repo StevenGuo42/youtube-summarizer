@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Bugfix & Polish
 status: executing
-stopped_at: Completed 11-01-PLAN.md
-last_updated: "2026-03-31T05:24:28.354Z"
-last_activity: 2026-03-31 -- Phase 11 Plan 01 complete
+stopped_at: Completed 11-02-PLAN.md
+last_updated: "2026-03-31T05:29:30.791Z"
+last_activity: 2026-03-31
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 0
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 ## Current Position
 
 Phase: 11 (queue-improvements) — EXECUTING
-Plan: 1 of 2 (Plan 01 complete)
-Status: Executing Phase 11
-Last activity: 2026-03-31 -- Phase 11 Plan 01 complete
+Plan: 2 of 2 (Plan 01 complete)
+Status: Ready to execute
+Last activity: 2026-03-31
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -44,6 +44,7 @@ Progress: [░░░░░░░░░░] 0%
 
 | Phase 09 P01 | 12min | 3 tasks | 2 files |
 | Phase 11 P01 | 2min | 2 tasks | 2 files |
+| Phase 11 P02 | 2min | 2 tasks | 3 files |
 
 ### Decisions
 
@@ -59,6 +60,8 @@ Key decisions from v1.0:
 - [Phase 11]: cursor.rowcount for DELETE operations (consistent with Phase 8 pattern)
 - [Phase 11]: Cancel-before-delete pattern for bulk queue management
 - [Phase 11]: JSON.stringify diff-based polling to eliminate DOM flash
+- [Phase 11]: Extended single change listener for both queue checkboxes and browse processing mode
+- [Phase 11]: Used dataset.batchSize to preserve batch_size on processing mode toggle POST
 
 ### Roadmap Evolution
 
@@ -75,6 +78,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-31T05:24:23.660Z
-Stopped at: Completed 11-01-PLAN.md
+Last session: 2026-03-31T05:29:30.789Z
+Stopped at: Completed 11-02-PLAN.md
 Resume: Execute Phase 11 Plan 02 (Queue UI improvements)

@@ -26,7 +26,7 @@ Requirements for Bugfix & Polish milestone. Each maps to roadmap phases.
 
 - [x] **QUE-01**: User can clear all jobs from the queue with a single button
 - [x] **QUE-02**: Queue tab updates without full-page flash (diff-based updates, skip if no changes)
-- [ ] **QUE-03**: User can toggle batch processing mode from the queue or settings UI
+- [x] **QUE-03**: User can toggle batch processing mode from the queue or settings UI
 
 ### Summaries
 
@@ -65,7 +65,7 @@ Requirements for Bugfix & Polish milestone. Each maps to roadmap phases.
 | BRW-03 | Phase 10 | Pending |
 | QUE-01 | Phase 11 | Complete |
 | QUE-02 | Phase 11 | Complete |
-| QUE-03 | Phase 11 | Pending |
+| QUE-03 | Phase 11 | Complete |
 | SUM-01 | Phase 12 | Pending |
 | SUM-02 | Phase 12 | Pending |
 
