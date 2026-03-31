@@ -11,9 +11,9 @@ Self-hosted web app that summarizes YouTube videos using keyframe extraction, OC
 |--------|----------|
 | ![Browse](docs/screenshots/browse.png) | ![Settings](docs/screenshots/settings.png) |
 
-| Summaries | Queue |
-|-----------|-------|
-| ![Summaries](docs/screenshots/summaries.png) | ![Queue](docs/screenshots/queue.png) |
+| Queue | Summaries |
+|-------|-----------|
+| ![Queue](docs/screenshots/queue.png) | ![Summaries](docs/screenshots/summaries.png) |
 
 ## Features
 
