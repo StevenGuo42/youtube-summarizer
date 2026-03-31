@@ -132,6 +132,22 @@ async function apiFetch(path, opts = {}) {
 
 // --- Browse Tab ---
 
+let browseDefaultPrompt = '';
+
+async function fetchDefaultPrompt() {
+  if (browseDefaultPrompt) return;
+  try {
+    const settings = await apiFetch('/api/settings/llm');
+    browseDefaultPrompt = settings.default_prompt || '';
+    const ta1 = document.getElementById('browse-custom-prompt');
+    const ta2 = document.getElementById('card-custom-prompt');
+    if (ta1) ta1.placeholder = browseDefaultPrompt || 'Leave empty to use default prompt...';
+    if (ta2) ta2.placeholder = browseDefaultPrompt || 'Leave empty to use default prompt...';
+  } catch (e) {
+    // Non-critical, use fallback placeholder
+  }
+}
+
 const browseState = {
   urlType: null,      // 'video' | 'channel' | 'playlist' | null
   channelId: null,    // channel_id for channel URL fetches
@@ -198,11 +214,14 @@ function renderVideoCard(info) {
             </select>
           </label>
         </div>
+        <label for="card-custom-prompt">Custom Prompt (optional — overrides global setting)</label>
+        <textarea id="card-custom-prompt" rows="4" placeholder="Loading default prompt..."></textarea>
         <button class="single-queue-btn" data-video-id="${info.id}">Add to Queue</button>
       </div>
     </div>
   `;
   resultsDiv.appendChild(article);
+  fetchDefaultPrompt();
 }
 
 function renderVideoTable(videos, showVisibility) {
@@ -381,6 +400,15 @@ function buildResultsContainer(headerText, isChannel) {
   `;
   resultsDiv.appendChild(optionsDiv);
 
+  // Custom prompt textarea
+  const promptDiv = document.createElement('div');
+  promptDiv.innerHTML = `
+    <label for="browse-custom-prompt">Custom Prompt (optional — overrides global setting)</label>
+    <textarea id="browse-custom-prompt" rows="4" placeholder="Loading default prompt..."></textarea>
+  `;
+  resultsDiv.appendChild(promptDiv);
+  setTimeout(() => fetchDefaultPrompt(), 0);
+
   // Submit button (per D-13)
   const submitBtn = document.createElement('button');
   submitBtn.id = 'queue-submit-btn';
@@ -480,6 +508,7 @@ async function handleBrowseFetch(e) {
   }
 
   browseState.urlType = urlType;
+  fetchDefaultPrompt();
 
   try {
     if (urlType === 'video') {
@@ -512,11 +541,12 @@ async function submitSingleToQueue(videoId) {
   const resultsDiv = document.getElementById('browse-results');
   const dedupMode = document.getElementById('card-dedup-mode').value;
   const keyframeMode = document.getElementById('card-keyframe-mode').value;
+  const customPrompt = document.getElementById('card-custom-prompt')?.value.trim() || null;
 
   try {
     await apiFetch('/api/queue', {
       method: 'POST',
-      body: { video_ids: [videoId], dedup_mode: dedupMode, keyframe_mode: keyframeMode },
+      body: { video_ids: [videoId], dedup_mode: dedupMode, keyframe_mode: keyframeMode, custom_prompt: customPrompt },
       container: resultsDiv,
     });
     showSuccess(resultsDiv, '1 video added to queue.', { href: '#queue', text: 'View Queue' });
@@ -532,11 +562,12 @@ async function submitSelectedToQueue() {
   const resultsDiv = document.getElementById('browse-results');
   const dedupMode = document.getElementById('dedup-mode').value;
   const keyframeMode = document.getElementById('keyframe-mode').value;
+  const customPrompt = document.getElementById('browse-custom-prompt')?.value.trim() || null;
 
   try {
     await apiFetch('/api/queue', {
       method: 'POST',
-      body: { video_ids: videoIds, dedup_mode: dedupMode, keyframe_mode: keyframeMode },
+      body: { video_ids: videoIds, dedup_mode: dedupMode, keyframe_mode: keyframeMode, custom_prompt: customPrompt },
       container: resultsDiv,
     });
     showSuccess(resultsDiv, videoIds.length + ' video(s) added to queue.', { href: '#queue', text: 'View Queue' });
