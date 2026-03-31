@@ -19,6 +19,10 @@ nav a[data-tab] {
   flex-shrink: 0;
   border-radius: 4px;
 }
+.video-card > div {
+  flex: 1;
+  min-width: 0;
+}
 
 /* Browse tab: video table */
 .browse-table img {
@@ -187,10 +191,14 @@ nav a[data-tab] {
 .summary-card-content strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 
 /* Summaries tab: TL;DR and view variants */
-.summary-tldr { margin-top: 0.25rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.summary-tldr { margin-top: 0.25rem; }
 .summary-full-card .summary-tldr { -webkit-line-clamp: unset; overflow: visible; }
 .summary-list-item { padding: 0.5rem 1rem !important; }
 .summary-list-item .summary-card { align-items: center; }
+@media (max-width: 575px) {
+  .summary-card { flex-direction: column; }
+  .summary-card img { width: 100%; max-width: 320px; }
+}
 
 /* Summaries tab: active and expanded states */
 .summary-card-active { border-left: 3px solid #01aaff; }
@@ -294,3 +302,6 @@ nav a[data-tab] {
   flex-shrink: 0;
   margin: 0;
 }
+
+/* Global: prevent Pico CSS aria-busy spinner from causing layout shift */
+[aria-busy="true"] { position: relative; min-height: 3rem; }
