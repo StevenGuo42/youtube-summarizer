@@ -243,3 +243,19 @@ nav a[data-tab] {
 .settings-status-ok { color: #2ea043; }
 .settings-status-fail { color: #b83f3b; }
 #cookie-paste-btn:disabled { opacity: 0.5; }
+
+/* Browse tab: fix URL input clipping in search form grid */
+#browse-fetch-form .grid {
+  width: 100%;
+}
+#browse-fetch-form input[type="url"] {
+  min-width: 0;
+}
+
+/* Browse tab: custom prompt textarea */
+#browse-custom-prompt,
+#card-custom-prompt {
+  font-family: monospace;
+  resize: vertical;
+  min-height: 4rem;
+}
