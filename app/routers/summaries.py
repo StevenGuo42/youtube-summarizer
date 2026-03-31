@@ -1,4 +1,5 @@
 import json
+import re
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import PlainTextResponse
@@ -6,6 +7,15 @@ from fastapi.responses import PlainTextResponse
 from app.database import get_db
 
 router = APIRouter()
+
+
+def strip_code_fence(text):
+    """Strip markdown code fence wrappers (```json ... ```) from text."""
+    if text and text.strip().startswith("```"):
+        text = text.strip()
+        text = re.sub(r'^```\w*\n?', '', text)
+        text = re.sub(r'\n?```\s*$', '', text)
+    return text
 
 
 @router.get("")
@@ -48,7 +58,7 @@ async def get_summary(job_id: str):
     # Parse structured_summary JSON for the response
     if result.get("structured_summary"):
         try:
-            result["structured"] = json.loads(result["structured_summary"])
+            result["structured"] = json.loads(strip_code_fence(result["structured_summary"]))
         except json.JSONDecodeError:
             result["structured"] = None
     return result
@@ -88,7 +98,7 @@ async def export_summary(job_id: str):
     if not row:
         raise HTTPException(status_code=404, detail="Summary not found")
 
-    structured = json.loads(row["structured_summary"]) if row["structured_summary"] else {}
+    structured = json.loads(strip_code_fence(row["structured_summary"])) if row["structured_summary"] else {}
     title = structured.get("title") or row["title"] or "Summary"
     tldr = structured.get("tldr", "")
     summary = structured.get("summary", "")

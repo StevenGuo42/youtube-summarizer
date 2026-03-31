@@ -80,7 +80,7 @@ async function apiFetch(path, opts = {}) {
 
   // Set Content-Type for JSON bodies on POST/PUT/PATCH
   const method = (opts.method || 'GET').toUpperCase();
-  if (['POST', 'PUT', 'PATCH'].includes(method) && opts.body && !(opts.body instanceof FormData)) {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && opts.body && !(opts.body instanceof FormData)) {
     opts.headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
     if (typeof opts.body !== 'string') {
       opts.body = JSON.stringify(opts.body);
@@ -237,7 +237,7 @@ function renderVideoCard(info) {
           <option value="insert" selected>Insert into default prompt</option>
           <option value="replace">Replace entire default prompt</option>
         </select>
-        <textarea id="card-custom-prompt" rows="4" placeholder="${promptPlaceholder()}"></textarea>
+        <textarea id="card-custom-prompt" rows="8" placeholder="${promptPlaceholder()}"></textarea>
         <button class="single-queue-btn" data-video-id="${info.id}">Add to Queue</button>
       </div>
     </div>
@@ -436,7 +436,7 @@ function buildResultsContainer(headerText, isChannel) {
       <option value="insert" selected>Insert into default prompt</option>
       <option value="replace">Replace entire default prompt</option>
     </select>
-    <textarea id="browse-custom-prompt" rows="4" placeholder="${promptPlaceholder()}"></textarea>
+    <textarea id="browse-custom-prompt" rows="8" placeholder="${promptPlaceholder()}"></textarea>
   `;
   resultsDiv.appendChild(promptDiv);
   setTimeout(() => fetchDefaultPrompt(), 0);
@@ -1078,6 +1078,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // --- Summaries Tab ---
 
+function stripCodeFence(text) {
+  if (!text) return text;
+  const trimmed = text.trim();
+  if (trimmed.startsWith('```')) {
+    return trimmed.replace(/^```\w*\n?/, '').replace(/\n?```\s*$/, '');
+  }
+  return text;
+}
+
 const summariesState = {
   summaries: [],
   cache: {},
@@ -1280,7 +1289,7 @@ function renderExpandedContent(container, data) {
   let structured = data.structured;
   if (!structured && data.structured_summary) {
     try {
-      structured = JSON.parse(data.structured_summary);
+      structured = JSON.parse(stripCodeFence(data.structured_summary));
     } catch (e) {
       console.warn('Failed to parse structured_summary JSON:', e);
     }
@@ -1302,7 +1311,7 @@ function renderExpandedContent(container, data) {
 function updateCardTldr(jobId) {
   const cached = summariesState.cache[jobId];
   if (!cached) return;
-  const structured = cached.structured || (cached.structured_summary ? JSON.parse(cached.structured_summary) : null);
+  const structured = cached.structured || (cached.structured_summary ? JSON.parse(stripCodeFence(cached.structured_summary)) : null);
   if (!structured || !structured.tldr) return;
   const card = document.querySelector(`article[data-job-id="${jobId}"]`);
   if (!card) return;
@@ -1334,7 +1343,7 @@ async function copySummary(jobId) {
 
   let structured = data.structured;
   if (!structured && data.structured_summary) {
-    try { structured = JSON.parse(data.structured_summary); } catch (e) { /* ignore */ }
+    try { structured = JSON.parse(stripCodeFence(data.structured_summary)); } catch (e) { /* ignore */ }
   }
 
   const markdownText = structured
