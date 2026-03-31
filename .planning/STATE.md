@@ -2,35 +2,35 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Bugfix & Polish
-status: verifying
-stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-03-31T06:40:01.221Z"
+status: completed
+stopped_at: Milestone v1.1 complete
+last_updated: "2026-03-31T14:45:00.000Z"
 last_activity: 2026-03-31
 progress:
   total_phases: 4
   completed_phases: 4
   total_plans: 5
   completed_plans: 5
-  percent: 0
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-30)
+See: .planning/PROJECT.md (updated 2026-03-31)
 
 **Core value:** Submit a YouTube URL and get back a structured, visual-aware summary through a usable web interface.
-**Current focus:** Phase 12 — summaries-fixes
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: 12 (summaries-fixes) — EXECUTING
-Plan: 1 of 1
-Status: Phase complete — ready for verification
+Phase: -
+Plan: -
+Status: Milestone v1.1 complete — ready for next milestone
 Last activity: 2026-03-31
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -38,37 +38,14 @@ Progress: [░░░░░░░░░░] 0%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 09 | 1 | 12min | 12min |
+| 10 | 1 | ~10min | ~10min |
+| 11 | 2 | 4min | 2min |
+| 12 | 1 | 2min | 2min |
 
 ## Accumulated Context
 
-| Phase 09 P01 | 12min | 3 tasks | 2 files |
-| Phase 11 P01 | 2min | 2 tasks | 2 files |
-| Phase 11 P02 | 2min | 2 tasks | 3 files |
-| Phase 12 P01 | 2min | 2 tasks | 3 files |
-
-### Decisions
-
-Decisions are logged in PROJECT.md Key Decisions table.
-Key decisions from v1.0:
-
-- Brownfield project: backend fully implemented, milestone was frontend + one backend tweak
-- Vanilla JS + Pico CSS frontend, no build step, served from FastAPI static files
-- Event delegation with data-attributes for all dynamic button handlers
-- cursor.rowcount for reliable SQLite mutation checks
-- [Phase 09]: Added cli_error boolean to auth status response for three-state frontend rendering
-- [Phase 09]: Switched cookie upload from raw fetch to apiFetch for consistent error/busy handling
-- [Phase 11]: cursor.rowcount for DELETE operations (consistent with Phase 8 pattern)
-- [Phase 11]: Cancel-before-delete pattern for bulk queue management
-- [Phase 11]: JSON.stringify diff-based polling to eliminate DOM flash
-- [Phase 11]: Extended single change listener for both queue checkboxes and browse processing mode
-- [Phase 11]: Used dataset.batchSize to preserve batch_size on processing mode toggle POST
-- [Phase 12]: Dual-layer code fence stripping (backend + frontend) for defense in depth on structured_summary JSON parsing
-
-### Roadmap Evolution
-
-- v1.0 complete: 8 phases shipped (1 backend update, 5 frontend tabs, 1 integration fix, 1 tech debt cleanup)
-- v1.1 roadmap: 4 phases (settings fixes, browse fixes, queue improvements, summaries fixes)
+Cleared at milestone boundary. See .planning/milestones/v1.1-ROADMAP.md for archived decisions.
 
 ### Pending Todos
 
@@ -80,6 +57,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-31T06:40:01.219Z
-Stopped at: Completed 12-01-PLAN.md
-Resume: Execute Phase 11 Plan 02 (Queue UI improvements)
+Last session: 2026-03-31
+Stopped at: Milestone v1.1 complete
+Resume: `/gsd:new-milestone` to start next milestone

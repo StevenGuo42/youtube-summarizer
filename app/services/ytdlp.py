@@ -131,10 +131,8 @@ async def list_channel_videos(
     visibility: "all" (default), "public", or "members_only"
     date_from/date_to: YYYYMMDD strings for date range filtering
     """
-    if visibility == "members_only":
-        url = f"https://www.youtube.com/channel/{channel_id}/membership"
-    else:
-        url = f"https://www.youtube.com/channel/{channel_id}/videos"
+    # Always use /videos tab — /membership tab doesn't list videos
+    url = f"https://www.youtube.com/channel/{channel_id}/videos"
 
     end = page * per_page
     start = end - per_page + 1
@@ -154,7 +152,6 @@ async def list_channel_videos(
             result = ydl.extract_info(url, download=False)
             entries = result.get("entries", []) if result else []
 
-            is_membership = visibility == "members_only"
             videos = [
                 {
                     "id": e.get("id"),
@@ -162,9 +159,8 @@ async def list_channel_videos(
                     "duration": e.get("duration"),
                     "thumbnail": e.get("thumbnails", [{}])[-1].get("url") if e.get("thumbnails") else None,
                     "upload_date": e.get("upload_date"),
-                    "visibility": "members_only" if is_membership
-                        else ("members_only" if e.get("availability") in ("subscriber_only", "premium_only")
-                              else "public"),
+                    "visibility": "members_only" if e.get("availability") in ("subscriber_only", "premium_only")
+                        else "public",
                 }
                 for e in entries
                 if e
@@ -172,10 +168,32 @@ async def list_channel_videos(
 
             if visibility == "public":
                 videos = [v for v in videos if v["visibility"] == "public"]
+            elif visibility == "members_only":
+                videos = [v for v in videos if v["visibility"] == "members_only"]
 
             return videos
 
     return await asyncio.to_thread(_list)
+
+
+async def fetch_video_date(video_id: str) -> str | None:
+    """Fetch upload date for a single video ID via full extraction."""
+    opts = {
+        **_base_opts(),
+        "skip_download": True,
+        "ignore_no_formats_error": True,
+    }
+
+    def _fetch():
+        import yt_dlp
+
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(
+                f"https://www.youtube.com/watch?v={video_id}", download=False,
+            )
+            return info.get("upload_date")
+
+    return await asyncio.to_thread(_fetch)
 
 
 async def list_playlist_videos(playlist_id: str) -> list[dict]:

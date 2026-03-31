@@ -184,15 +184,18 @@ nav a[data-tab] {
 .view-toggle button:last-child { border-radius: 0 4px 4px 0; }
 .view-toggle button.active { background: rgba(1, 170, 255, 0.15); color: #01aaff; border-color: rgba(1, 170, 255, 0.3); font-weight: 700; }
 
+/* Summaries tab: bulk action bar */
+.summaries-bulk-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+
 /* Summaries tab: card layout */
 .summary-card { display: flex; gap: 1.5rem; align-items: flex-start; cursor: pointer; }
+.summary-card .summary-check { align-self: center; flex-shrink: 0; margin: 0; }
 .summary-card img { width: 120px; flex-shrink: 0; border-radius: 4px; }
 .summary-card-content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .summary-card-content strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 
 /* Summaries tab: TL;DR and view variants */
 .summary-tldr { margin-top: 0.25rem; }
-.summary-full-card .summary-tldr { -webkit-line-clamp: unset; overflow: visible; }
 .summary-list-item { padding: 0.5rem 1rem !important; }
 .summary-list-item .summary-card { align-items: center; }
 @media (max-width: 575px) {
@@ -303,5 +306,5 @@ nav a[data-tab] {
   margin: 0;
 }
 
-/* Global: prevent Pico CSS aria-busy spinner from causing layout shift */
-[aria-busy="true"] { position: relative; min-height: 3rem; }
+/* Global: spinner on h2 elements — inline next to text, no layout shift */
+h2[aria-busy="true"]::before { margin-left: 0.5rem; }
