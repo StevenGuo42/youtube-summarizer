@@ -34,6 +34,13 @@
         </section>
         <section id="queue" hidden>
             <h2>Processing Queue</h2>
+            <div class="queue-header-bar" id="queue-header-bar" hidden>
+                <label><input type="checkbox" id="queue-select-all" aria-label="Select all jobs"> Select All</label>
+                <div style="display:flex;gap:0.5rem">
+                    <button class="outline queue-clear-btn" id="queue-clear-btn">Clear Finished</button>
+                    <button class="outline queue-delete-btn" id="queue-delete-btn" style="display:none">Delete Selected</button>
+                </div>
+            </div>
             <div id="queue-container">
                 <p id="queue-empty-state" class="empty-state">No processing jobs yet. Go to the Browse tab to find videos and add them to the queue.</p>
                 <div id="queue-job-list"></div>
