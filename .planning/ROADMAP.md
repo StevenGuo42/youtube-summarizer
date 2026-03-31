@@ -73,7 +73,8 @@ Plans:
 **UI hint**: yes
 
 Plans:
-- [ ] 11-01: TBD
+- [x] 11-01-PLAN.md -- Bulk delete endpoints and polling flash fix
+- [ ] 11-02-PLAN.md -- Queue UI (clear button, batch toggle)
 
 ### Phase 12: Summaries Fixes
 **Goal**: Users can view and browse all their completed summaries in any view style
@@ -102,7 +103,7 @@ Plans:
 | 8. Fix Tech Debt | v1.0 | 1/1 | Complete | 2026-03-30 |
 | 9. Settings Tab Fixes | v1.1 | 0/1 | Planning | - |
 | 10. Browse Tab Fixes | v1.1 | 0/0 | Not started | - |
-| 11. Queue Improvements | v1.1 | 0/0 | Not started | - |
+| 11. Queue Improvements | v1.1 | 1/2 | In progress | - |
 | 12. Summaries Fixes | v1.1 | 0/0 | Not started | - |
 
 ---

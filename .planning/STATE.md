@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Bugfix & Polish
-status: verifying
-stopped_at: Completed 09-01-PLAN.md
-last_updated: "2026-03-31T02:31:12.360Z"
-last_activity: 2026-03-31
+status: executing
+stopped_at: Completed 11-01-PLAN.md
+last_updated: "2026-03-31T05:24:28.354Z"
+last_activity: 2026-03-31 -- Phase 11 Plan 01 complete
 progress:
   total_phases: 4
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 2
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Submit a YouTube URL and get back a structured, visual-aware summary through a usable web interface.
-**Current focus:** Phase 09 — settings-tab-fixes
+**Current focus:** Phase 11 — queue-improvements
 
 ## Current Position
 
-Phase: 10
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-03-31
+Phase: 11 (queue-improvements) — EXECUTING
+Plan: 1 of 2 (Plan 01 complete)
+Status: Executing Phase 11
+Last activity: 2026-03-31 -- Phase 11 Plan 01 complete
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -43,6 +43,7 @@ Progress: [░░░░░░░░░░] 0%
 ## Accumulated Context
 
 | Phase 09 P01 | 12min | 3 tasks | 2 files |
+| Phase 11 P01 | 2min | 2 tasks | 2 files |
 
 ### Decisions
 
@@ -55,6 +56,9 @@ Key decisions from v1.0:
 - cursor.rowcount for reliable SQLite mutation checks
 - [Phase 09]: Added cli_error boolean to auth status response for three-state frontend rendering
 - [Phase 09]: Switched cookie upload from raw fetch to apiFetch for consistent error/busy handling
+- [Phase 11]: cursor.rowcount for DELETE operations (consistent with Phase 8 pattern)
+- [Phase 11]: Cancel-before-delete pattern for bulk queue management
+- [Phase 11]: JSON.stringify diff-based polling to eliminate DOM flash
 
 ### Roadmap Evolution
 
@@ -71,6 +75,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-31T02:27:26.883Z
-Stopped at: Completed 09-01-PLAN.md
-Resume: Plan Phase 9 (Settings Tab Fixes)
+Last session: 2026-03-31T05:24:23.660Z
+Stopped at: Completed 11-01-PLAN.md
+Resume: Execute Phase 11 Plan 02 (Queue UI improvements)
