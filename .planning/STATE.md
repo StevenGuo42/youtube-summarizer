@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Bugfix & Polish
-status: executing
-stopped_at: Completed 11-02-PLAN.md
-last_updated: "2026-03-31T05:33:28.652Z"
+status: verifying
+stopped_at: Completed 12-01-PLAN.md
+last_updated: "2026-03-31T06:40:01.221Z"
 last_activity: 2026-03-31
 progress:
   total_phases: 4
-  completed_phases: 3
-  total_plans: 4
-  completed_plans: 4
+  completed_phases: 4
+  total_plans: 5
+  completed_plans: 5
   percent: 0
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Submit a YouTube URL and get back a structured, visual-aware summary through a usable web interface.
-**Current focus:** Phase 11 — queue-improvements
+**Current focus:** Phase 12 — summaries-fixes
 
 ## Current Position
 
-Phase: 12
-Plan: Not started
-Status: Ready to execute
+Phase: 12 (summaries-fixes) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
 Last activity: 2026-03-31
 
 Progress: [░░░░░░░░░░] 0%
@@ -45,6 +45,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 09 P01 | 12min | 3 tasks | 2 files |
 | Phase 11 P01 | 2min | 2 tasks | 2 files |
 | Phase 11 P02 | 2min | 2 tasks | 3 files |
+| Phase 12 P01 | 2min | 2 tasks | 3 files |
 
 ### Decisions
 
@@ -62,6 +63,7 @@ Key decisions from v1.0:
 - [Phase 11]: JSON.stringify diff-based polling to eliminate DOM flash
 - [Phase 11]: Extended single change listener for both queue checkboxes and browse processing mode
 - [Phase 11]: Used dataset.batchSize to preserve batch_size on processing mode toggle POST
+- [Phase 12]: Dual-layer code fence stripping (backend + frontend) for defense in depth on structured_summary JSON parsing
 
 ### Roadmap Evolution
 
@@ -78,6 +80,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-31T05:29:30.789Z
-Stopped at: Completed 11-02-PLAN.md
+Last session: 2026-03-31T06:40:01.219Z
+Stopped at: Completed 12-01-PLAN.md
 Resume: Execute Phase 11 Plan 02 (Queue UI improvements)

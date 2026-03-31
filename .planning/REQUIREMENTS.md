@@ -30,8 +30,8 @@ Requirements for Bugfix & Polish milestone. Each maps to roadmap phases.
 
 ### Summaries
 
-- [ ] **SUM-01**: User sees summaries for successfully processed videos
-- [ ] **SUM-02**: User can switch between compact/list/full view styles and they render responsively
+- [x] **SUM-01**: User sees summaries for successfully processed videos
+- [x] **SUM-02**: User can switch between compact/list/full view styles and they render responsively
 
 ## Future Requirements
 
@@ -66,8 +66,8 @@ Requirements for Bugfix & Polish milestone. Each maps to roadmap phases.
 | QUE-01 | Phase 11 | Complete |
 | QUE-02 | Phase 11 | Complete |
 | QUE-03 | Phase 11 | Complete |
-| SUM-01 | Phase 12 | Pending |
-| SUM-02 | Phase 12 | Pending |
+| SUM-01 | Phase 12 | Complete |
+| SUM-02 | Phase 12 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 14 total
