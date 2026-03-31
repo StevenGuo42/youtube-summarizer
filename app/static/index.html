@@ -52,7 +52,13 @@
                 <div class="view-toggle">
                     <button class="active" data-view="compact">Compact</button>
                     <button data-view="list">List</button>
-                    <button data-view="full">Full</button>
+                </div>
+            </div>
+            <div class="summaries-bulk-bar" id="summaries-bulk-bar" hidden>
+                <label><input type="checkbox" id="summaries-select-all" aria-label="Select all summaries"> Select All</label>
+                <div style="display:flex;gap:0.5rem">
+                    <button class="outline summary-btn" id="summaries-export-selected-btn" style="display:none">Export Selected</button>
+                    <button class="outline summary-btn summary-delete-btn" id="summaries-delete-selected-btn" style="display:none">Delete Selected</button>
                 </div>
             </div>
             <p id="summaries-empty-state" class="empty-state">No summaries yet. Process some videos from the Browse tab to see results here.</p>

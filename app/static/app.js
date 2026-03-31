@@ -73,9 +73,14 @@ async function apiFetch(path, opts = {}) {
     delete opts.container;
   }
 
+  // Put spinner on the section's h2 to avoid layout shift
+  const spinnerEl = container ? (container.closest('section')?.querySelector('h2') || container) : null;
+
   if (container) {
     clearError(container);
-    container.setAttribute('aria-busy', 'true');
+  }
+  if (spinnerEl) {
+    spinnerEl.setAttribute('aria-busy', 'true');
   }
 
   // Set Content-Type for JSON bodies on POST/PUT/PATCH
@@ -124,8 +129,8 @@ async function apiFetch(path, opts = {}) {
     }
     throw new Error(message);
   } finally {
-    if (container) {
-      container.removeAttribute('aria-busy');
+    if (spinnerEl) {
+      spinnerEl.removeAttribute('aria-busy');
     }
   }
 }
@@ -288,6 +293,7 @@ function renderVideoTable(videos, showVisibility) {
   }
 
   const visCol = showVisibility ? '<th>Visibility</th>' : '';
+  const hasDates = videos.some(v => v.upload_date);
   let html = `<table class="browse-table"><thead><tr>
     <th><input type="checkbox" id="select-all" aria-label="Select all videos"></th>
     <th>Thumbnail</th>
@@ -309,7 +315,7 @@ function renderVideoTable(videos, showVisibility) {
       <td>${v.title || 'Untitled'}</td>
       <td style="text-align:right"><small style="color:#7b8495">${formatDuration(v.duration)}</small></td>
       ${visBadge}
-      <td><small style="color:#7b8495">${formatDate(v.upload_date)}</small></td>
+      <td class="date-cell" data-video-id="${v.id}"><small style="color:#7b8495">${formatDate(v.upload_date)}</small></td>
     </tr>`;
   }
 
@@ -330,6 +336,60 @@ function renderVideoTable(videos, showVisibility) {
   });
 
   updateQueueButton();
+
+  // Async-fetch upload dates if not already available
+  if (!hasDates) {
+    fetchAndFillDates(videos.map(v => v.id));
+  }
+}
+
+async function fetchAndFillDates(videoIds) {
+  // Show a subtle loading indicator on date cells
+  for (const cell of document.querySelectorAll('.date-cell')) {
+    cell.querySelector('small').setAttribute('aria-busy', 'true');
+  }
+
+  try {
+    const res = await fetch('/api/video/dates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ video_ids: videoIds }),
+    });
+    if (!res.ok) throw new Error('Failed to fetch dates');
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process complete lines
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete last line in buffer
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const { id, upload_date } = JSON.parse(line);
+          const cell = document.querySelector(`.date-cell[data-video-id="${id}"]`);
+          if (cell) {
+            const small = cell.querySelector('small');
+            small.removeAttribute('aria-busy');
+            small.textContent = formatDate(upload_date);
+          }
+        } catch (e) { /* skip malformed line */ }
+      }
+    }
+  } catch (err) {
+    // Non-critical
+  }
+
+  // Clear busy state on any remaining cells
+  for (const cell of document.querySelectorAll('.date-cell small[aria-busy]')) {
+    cell.removeAttribute('aria-busy');
+  }
 }
 
 function updateSelection() {
@@ -903,6 +963,7 @@ function updateQueueButtons() {
 }
 
 async function clearFinished() {
+  if (!confirm('Clear all finished jobs from the queue?')) return;
   const clearBtn = document.getElementById('queue-clear-btn');
   const container = document.getElementById('queue-container');
   try {
@@ -1087,48 +1148,91 @@ function stripCodeFence(text) {
   return text;
 }
 
+function extractEmbeddedJson(summaryText) {
+  if (!summaryText) return null;
+  const m = summaryText.match(/```(?:json)?\s*\n?\{([\s\S]*)\}\s*\n?```/);
+  if (!m) return null;
+  const inner = '{' + m[1] + '}';
+  try { return JSON.parse(inner); } catch (e) { /* fall through to regex */ }
+  const result = {};
+  for (const field of ['title', 'tldr']) {
+    const fm = inner.match(new RegExp(`"${field}"\\s*:\\s*"([^"]*)"`));
+    if (fm) result[field] = fm[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+  }
+  const sm = inner.match(/"summary"\s*:\s*"([\s\S]*)/);
+  if (sm) {
+    let raw = sm[1].replace(/"\s*\n?\}\s*$/, '');
+    raw = raw.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\'/g, "'");
+    result.summary = raw;
+  }
+  return Object.keys(result).length ? result : null;
+}
+
 const summariesState = {
   summaries: [],
   cache: {},
   viewStyle: localStorage.getItem('summaries-view-style') || 'compact',
   expandedId: null,
+  selected: new Set(),
 };
 
 async function fetchSummaries() {
+  // Always start from clean state — collapse expanded card, clear old cards
+  collapseSummary();
+  const listEl = document.getElementById('summaries-list');
+  if (listEl) listEl.innerHTML = '';
+  const heading = document.querySelector('#summaries h2');
+  if (heading) heading.setAttribute('aria-busy', 'true');
   try {
-    const data = await apiFetch('/api/summaries', {
-      container: document.getElementById('summaries-container'),
-    });
+    const data = await apiFetch('/api/summaries');
     summariesState.summaries = data;
-    // Reset expanded ID if the expanded summary no longer exists
-    if (summariesState.expandedId && !data.some(s => s.job_id === summariesState.expandedId)) {
-      summariesState.expandedId = null;
-    }
     renderSummaries();
   } catch (err) {
-    // apiFetch already shows error in the container
+    const container = document.getElementById('summaries-container');
+    if (container) showError(container, 'Could not load summaries.');
+  } finally {
+    if (heading) heading.removeAttribute('aria-busy');
   }
 }
 
 function renderSummaries() {
   const listEl = document.getElementById('summaries-list');
   const emptyEl = document.getElementById('summaries-empty-state');
+  const bulkBar = document.getElementById('summaries-bulk-bar');
   if (!listEl) return;
 
   if (summariesState.summaries.length === 0) {
     if (emptyEl) emptyEl.hidden = false;
+    if (bulkBar) bulkBar.hidden = true;
     listEl.innerHTML = '';
     return;
   }
 
   if (emptyEl) emptyEl.hidden = true;
+  if (bulkBar) bulkBar.hidden = false;
   listEl.innerHTML = '';
   for (const summary of summariesState.summaries) {
     listEl.appendChild(renderSummaryCard(summary));
   }
-  // Re-expand if one was expanded
-  if (summariesState.expandedId) {
-    expandSummary(summariesState.expandedId);
+  updateSummariesBulkBar();
+}
+
+function updateSummariesBulkBar() {
+  const selectAll = document.getElementById('summaries-select-all');
+  const exportBtn = document.getElementById('summaries-export-selected-btn');
+  const deleteBtn = document.getElementById('summaries-delete-selected-btn');
+  const count = summariesState.selected.size;
+
+  if (exportBtn) exportBtn.style.display = count > 0 ? '' : 'none';
+  if (deleteBtn) deleteBtn.style.display = count > 0 ? '' : 'none';
+  if (exportBtn && count > 0) exportBtn.textContent = `Export Selected (${count})`;
+  if (deleteBtn && count > 0) deleteBtn.textContent = `Delete Selected (${count})`;
+
+  if (selectAll && summariesState.summaries.length > 0) {
+    const allSelected = summariesState.summaries.length === count;
+    const someSelected = count > 0 && !allSelected;
+    selectAll.checked = allSelected;
+    selectAll.indeterminate = someSelected;
   }
 }
 
@@ -1136,7 +1240,9 @@ function renderSummaryCard(summary) {
   const article = document.createElement('article');
   const isActive = summariesState.expandedId === summary.job_id;
   const cached = summariesState.cache[summary.job_id];
-  const tldr = cached && cached.structured ? cached.structured.tldr || '' : '';
+  const tldr = (cached && cached.structured ? cached.structured.tldr : null) || summary.tldr || '';
+
+  const checked = summariesState.selected.has(summary.job_id) ? 'checked' : '';
 
   if (summariesState.viewStyle === 'list') {
     // Title-only list view
@@ -1144,6 +1250,7 @@ function renderSummaryCard(summary) {
     article.dataset.jobId = summary.job_id;
     article.innerHTML = `
       <div class="summary-card" data-job-id="${summary.job_id}">
+        <input type="checkbox" class="summary-check" data-job-id="${summary.job_id}" ${checked} aria-label="Select summary">
         <div class="summary-card-content" style="flex-direction:row;align-items:center;gap:1rem">
           <strong style="flex:1;min-width:0">${summary.title || 'Untitled'}</strong>
           <small style="color:#7b8495;white-space:nowrap">${summary.channel || 'Unknown'} / ${formatCreatedTime(summary.created_at)}</small>
@@ -1156,11 +1263,11 @@ function renderSummaryCard(summary) {
       </div>
     `;
   } else {
-    // Compact or full view
-    const extraClass = summariesState.viewStyle === 'full' ? ' summary-full-card' : '';
-    article.className = 'summary-card' + extraClass + (isActive ? ' summary-card-active' : '');
+    // Compact view (with thumbnail)
+    article.className = 'summary-card' + (isActive ? ' summary-card-active' : '');
     article.dataset.jobId = summary.job_id;
     article.innerHTML = `
+      <input type="checkbox" class="summary-check" data-job-id="${summary.job_id}" ${checked} aria-label="Select summary">
       <img src="${summary.thumbnail_url || ''}" alt="" loading="lazy">
       <div class="summary-card-content">
         <strong>${summary.title || 'Untitled'}</strong>
@@ -1252,8 +1359,8 @@ async function expandSummary(jobId) {
   collapseSummary();
   summariesState.expandedId = jobId;
 
-  // Mark the card as active
-  const article = document.querySelector(`article[data-job-id="${jobId}"]`);
+  // Mark the card as active — scope to summaries list to avoid matching queue cards
+  const article = document.querySelector(`#summaries-list article[data-job-id="${jobId}"]`);
   if (article) article.classList.add('summary-card-active');
 
   // Create expanded container as sibling after the card
@@ -1295,10 +1402,18 @@ function renderExpandedContent(container, data) {
     }
   }
 
+  // Handle embedded JSON: title/tldr empty but real content in summary code block
+  if (structured && (!structured.title || structured.title.length <= 2)) {
+    const embedded = extractEmbeddedJson(structured.summary || '');
+    if (embedded) structured = embedded;
+  }
+
   if (structured && structured.summary) {
+    const title = structured.title || '';
+    const tldr = structured.tldr || '';
     container.innerHTML = `
-      <h3>${structured.title || ''}</h3>
-      <p><strong>TL;DR:</strong> ${structured.tldr || ''}</p>
+      ${title ? `<h3>${title}</h3>` : ''}
+      ${tldr ? `<p><strong>TL;DR:</strong> ${tldr}</p>` : ''}
       <div class="summary-markdown">${sanitizeHtml(renderMarkdown(structured.summary))}</div>
     `;
   } else {
@@ -1313,7 +1428,7 @@ function updateCardTldr(jobId) {
   if (!cached) return;
   const structured = cached.structured || (cached.structured_summary ? JSON.parse(stripCodeFence(cached.structured_summary)) : null);
   if (!structured || !structured.tldr) return;
-  const card = document.querySelector(`article[data-job-id="${jobId}"]`);
+  const card = document.querySelector(`#summaries-list article[data-job-id="${jobId}"]`);
   if (!card) return;
   const tldrDiv = card.querySelector('.summary-tldr');
   if (tldrDiv && !tldrDiv.textContent.trim()) {
@@ -1402,7 +1517,7 @@ async function deleteSummary(jobId) {
     await apiFetch(`/api/summaries/${jobId}`, { method: 'DELETE' });
 
     // Remove card and expanded div from DOM
-    const card = document.querySelector(`article[data-job-id="${jobId}"]`);
+    const card = document.querySelector(`#summaries-list article[data-job-id="${jobId}"]`);
     if (card) {
       const nextSibling = card.nextElementSibling;
       if (nextSibling && nextSibling.classList.contains('summary-expanded')) {
@@ -1441,6 +1556,19 @@ document.addEventListener('click', (e) => {
     return;
   }
 
+  // Checkbox clicks: stop propagation to prevent card expand
+  if (e.target.classList.contains('summary-check')) {
+    e.stopPropagation();
+    const jobId = e.target.dataset.jobId;
+    if (e.target.checked) {
+      summariesState.selected.add(jobId);
+    } else {
+      summariesState.selected.delete(jobId);
+    }
+    updateSummariesBulkBar();
+    return;
+  }
+
   // Action buttons: stop propagation to prevent card expand
   if (e.target.classList.contains('summary-copy-btn')) {
     e.stopPropagation();
@@ -1474,9 +1602,50 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.view-toggle button').forEach(btn => btn.classList.remove('active'));
     toggleBtn.classList.add('active');
   }
-  // If summaries is the initial tab, fetch data
-  if (getTabFromHash() === 'summaries') {
-    fetchSummaries();
+  // Select-all checkbox
+  const selectAllCb = document.getElementById('summaries-select-all');
+  if (selectAllCb) {
+    selectAllCb.addEventListener('change', () => {
+      if (selectAllCb.checked) {
+        for (const s of summariesState.summaries) summariesState.selected.add(s.job_id);
+      } else {
+        summariesState.selected.clear();
+      }
+      renderSummaries();
+    });
+  }
+
+  // Bulk delete
+  const bulkDeleteBtn = document.getElementById('summaries-delete-selected-btn');
+  if (bulkDeleteBtn) {
+    bulkDeleteBtn.addEventListener('click', async () => {
+      const ids = Array.from(summariesState.selected);
+      if (ids.length === 0) return;
+      if (!confirm(`Delete ${ids.length} summary(ies)? This cannot be undone.`)) return;
+      for (const jobId of ids) {
+        try {
+          await apiFetch(`/api/summaries/${jobId}`, { method: 'DELETE' });
+          summariesState.summaries = summariesState.summaries.filter(s => s.job_id !== jobId);
+          delete summariesState.cache[jobId];
+        } catch (err) { /* continue with others */ }
+      }
+      summariesState.selected.clear();
+      if (summariesState.expandedId && !summariesState.summaries.some(s => s.job_id === summariesState.expandedId)) {
+        summariesState.expandedId = null;
+      }
+      renderSummaries();
+    });
+  }
+
+  // Bulk export
+  const bulkExportBtn = document.getElementById('summaries-export-selected-btn');
+  if (bulkExportBtn) {
+    bulkExportBtn.addEventListener('click', async () => {
+      const ids = Array.from(summariesState.selected);
+      for (const jobId of ids) {
+        await exportSummary(jobId);
+      }
+    });
   }
 });
 
@@ -1491,7 +1660,8 @@ const settingsState = {
 
 async function loadSettings() {
   const section = document.getElementById('settings');
-  section.setAttribute('aria-busy', 'true');
+  const heading = section.querySelector('h2');
+  if (heading) heading.setAttribute('aria-busy', 'true');
   try {
     const [cookieRes, llmRes, authRes] = await Promise.all([
       apiFetch('/api/auth/status'),
@@ -1508,7 +1678,7 @@ async function loadSettings() {
   } catch (err) {
     showError(section, 'Could not load settings. Check that the server is running and try again.');
   } finally {
-    section.removeAttribute('aria-busy');
+    if (heading) heading.removeAttribute('aria-busy');
   }
 }
 
