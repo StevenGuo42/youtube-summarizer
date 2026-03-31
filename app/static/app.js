@@ -690,6 +690,8 @@ document.addEventListener('click', (e) => {
 
 const queueState = {
   jobs: [],
+  lastJson: null,
+  selected: new Set(),
   pollInterval: null,
   pollRate: null,
 };
@@ -848,6 +850,12 @@ function renderJobs() {
 async function fetchJobs() {
   try {
     const jobs = await apiFetch('/api/queue', { container: document.getElementById('queue-container') });
+    const json = JSON.stringify(jobs);
+    if (json === queueState.lastJson) {
+      // No changes — skip re-render to avoid flash (per D-04)
+      return;
+    }
+    queueState.lastJson = json;
     queueState.jobs = jobs;
     renderJobs();
     adjustPollingRate();
