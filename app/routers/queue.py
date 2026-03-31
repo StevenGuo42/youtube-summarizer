@@ -15,6 +15,7 @@ class QueueRequest(BaseModel):
     dedup_mode: str = "regular"
     keyframe_mode: str = "image"
     custom_prompt: str | None = None
+    custom_prompt_mode: str = "replace"
 
 
 @router.post("")
@@ -34,8 +35,8 @@ async def add_to_queue(req: QueueRequest):
         try:
             await db.execute(
                 """INSERT INTO jobs (id, video_id, title, channel, duration, thumbnail_url,
-                                    dedup_mode, keyframe_mode, custom_prompt, status)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
+                                    dedup_mode, keyframe_mode, custom_prompt, custom_prompt_mode, status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
                 (
                     job_id,
                     video_id,
@@ -46,6 +47,7 @@ async def add_to_queue(req: QueueRequest):
                     req.dedup_mode,
                     req.keyframe_mode,
                     req.custom_prompt,
+                    req.custom_prompt_mode,
                 ),
             )
             await db.commit()

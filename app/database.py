@@ -59,10 +59,17 @@ async def init_db():
             ("keyframe_mode", "'image'"),
             ("warnings", "NULL"),
             ("custom_prompt", "NULL"),
+            ("custom_prompt_mode", "'replace'"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE jobs ADD COLUMN {col} TEXT DEFAULT {default}")
             except Exception:
                 pass  # Column already exists
+
+        # Migrations for llm_settings table
+        try:
+            await db.execute("ALTER TABLE llm_settings ADD COLUMN custom_prompt_mode TEXT DEFAULT 'replace'")
+        except Exception:
+            pass  # Column already exists
 
         await db.commit()
