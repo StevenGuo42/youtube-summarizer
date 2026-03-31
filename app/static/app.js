@@ -808,6 +808,7 @@ function renderJobCard(job) {
   }
 
   article.innerHTML = `
+    <input type="checkbox" class="job-check" value="${job.id}" aria-label="Select job: ${(job.title || 'Untitled').replace(/"/g, '&quot;')}"${queueState.selected.has(job.id) ? ' checked' : ''}>
     <img src="${job.thumbnail_url || ''}" alt="" loading="lazy">
     <div class="job-card-content">
       <div class="job-card-header">
@@ -832,19 +833,109 @@ function renderJobCard(job) {
 function renderJobs() {
   const jobList = document.getElementById('queue-job-list');
   const emptyState = document.getElementById('queue-empty-state');
+  const headerBar = document.getElementById('queue-header-bar');
   if (!jobList) return;
 
   if (queueState.jobs.length === 0) {
     if (emptyState) emptyState.hidden = false;
+    if (headerBar) headerBar.hidden = true;
     jobList.innerHTML = '';
     return;
   }
 
   if (emptyState) emptyState.hidden = true;
+  if (headerBar) headerBar.hidden = false;
   jobList.innerHTML = '';
   for (const job of queueState.jobs) {
     jobList.appendChild(renderJobCard(job));
   }
+  // Prune selections for jobs that no longer exist
+  const currentIds = new Set(queueState.jobs.map(j => j.id));
+  for (const id of queueState.selected) {
+    if (!currentIds.has(id)) queueState.selected.delete(id);
+  }
+  updateQueueButtons();
+}
+
+function updateQueueButtons() {
+  const clearBtn = document.getElementById('queue-clear-btn');
+  const deleteBtn = document.getElementById('queue-delete-btn');
+  const selectAll = document.getElementById('queue-select-all');
+
+  // Clear Finished: disabled when no finished jobs
+  const finishedCount = queueState.jobs.filter(j => j.status === 'done' || j.status === 'failed' || j.status === 'cancelled').length;
+  if (clearBtn) clearBtn.disabled = finishedCount === 0;
+
+  // Delete Selected: hidden when none selected, shows count
+  const selectedCount = queueState.selected.size;
+  if (deleteBtn) {
+    deleteBtn.style.display = selectedCount > 0 ? 'inline-block' : 'none';
+    deleteBtn.textContent = `Delete Selected (${selectedCount})`;
+  }
+
+  // Select-all: checked if all selected, indeterminate if partial
+  if (selectAll && queueState.jobs.length > 0) {
+    const allSelected = queueState.jobs.length === selectedCount;
+    const someSelected = selectedCount > 0 && !allSelected;
+    selectAll.checked = allSelected;
+    selectAll.indeterminate = someSelected;
+  }
+}
+
+async function clearFinished() {
+  const clearBtn = document.getElementById('queue-clear-btn');
+  const container = document.getElementById('queue-container');
+  try {
+    if (clearBtn) clearBtn.setAttribute('aria-busy', 'true');
+    const result = await apiFetch('/api/queue/finished', { method: 'DELETE', container });
+    if (clearBtn) clearBtn.removeAttribute('aria-busy');
+    queueState.selected.clear();
+    queueState.lastJson = null; // Force re-render on next fetch
+    await fetchJobs();
+    showSuccess(container, `${result.deleted} job(s) cleared.`);
+  } catch (err) {
+    if (clearBtn) clearBtn.removeAttribute('aria-busy');
+  }
+}
+
+async function deleteSelected() {
+  const jobIds = Array.from(queueState.selected);
+  if (jobIds.length === 0) return;
+  const deleteBtn = document.getElementById('queue-delete-btn');
+  const container = document.getElementById('queue-container');
+  try {
+    if (deleteBtn) deleteBtn.setAttribute('aria-busy', 'true');
+    const result = await apiFetch('/api/queue', { method: 'DELETE', body: { job_ids: jobIds }, container });
+    if (deleteBtn) deleteBtn.removeAttribute('aria-busy');
+    queueState.selected.clear();
+    queueState.lastJson = null; // Force re-render on next fetch
+    await fetchJobs();
+    showSuccess(container, `${result.deleted} job(s) deleted.`);
+  } catch (err) {
+    if (deleteBtn) deleteBtn.removeAttribute('aria-busy');
+  }
+}
+
+function toggleSelectAll(checked) {
+  if (checked) {
+    for (const job of queueState.jobs) {
+      queueState.selected.add(job.id);
+    }
+  } else {
+    queueState.selected.clear();
+  }
+  // Update all visible checkboxes
+  document.querySelectorAll('.job-check').forEach(cb => { cb.checked = checked; });
+  updateQueueButtons();
+}
+
+function toggleJobSelection(jobId, checked) {
+  if (checked) {
+    queueState.selected.add(jobId);
+  } else {
+    queueState.selected.delete(jobId);
+  }
+  updateQueueButtons();
 }
 
 async function fetchJobs() {
@@ -917,7 +1008,7 @@ function stopPolling() {
   queueState.pollRate = null;
 }
 
-// Queue tab: event delegation for cancel buttons and view summary links
+// Queue tab: event delegation for cancel buttons, view summary links, and queue management
 document.addEventListener('click', (e) => {
   if (e.target.classList.contains('cancel-btn')) {
     const jobId = e.target.dataset.jobId;
@@ -926,6 +1017,22 @@ document.addEventListener('click', (e) => {
   if (e.target.classList.contains('view-summary-link')) {
     e.preventDefault();
     switchTab('summaries');
+  }
+  if (e.target.id === 'queue-clear-btn' || e.target.closest('#queue-clear-btn')) {
+    clearFinished();
+  }
+  if (e.target.id === 'queue-delete-btn' || e.target.closest('#queue-delete-btn')) {
+    deleteSelected();
+  }
+});
+
+// Queue tab: event delegation for checkboxes (select-all and per-job)
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'queue-select-all') {
+    toggleSelectAll(e.target.checked);
+  }
+  if (e.target.classList.contains('job-check')) {
+    toggleJobSelection(e.target.value, e.target.checked);
   }
 });
 
