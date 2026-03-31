@@ -65,7 +65,7 @@ async def get_video_info(url: str) -> dict:
 
     For channel/playlist URLs, uses extract_flat to avoid enumerating all videos.
     """
-    is_collection = any(p in url for p in ["/channel/", "/c/", "/@", "/playlist?"])
+    is_collection = any(p in url for p in ["/channel/", "/c/", "/user/", "/@", "/playlist?"])
     opts = {
         **_base_opts(),
         "skip_download": True,
