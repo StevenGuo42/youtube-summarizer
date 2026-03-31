@@ -202,11 +202,14 @@ async def process_job(job_id: str) -> None:
                 "duration": job["duration"],
             }
 
+            # Per-job custom_prompt overrides global setting
+            effective_prompt = job["custom_prompt"] if job["custom_prompt"] else llm_settings["custom_prompt"]
+
             result = await summarize(
                 transcript=transcript,
                 keyframes=keyframes,
                 video_meta=video_meta,
-                custom_prompt=llm_settings["custom_prompt"],
+                custom_prompt=effective_prompt,
                 model=llm_settings["model"],
                 keyframe_mode=KeyframeMode(keyframe_mode_str),
                 ocr_paths=ocr_paths,
@@ -414,11 +417,14 @@ async def process_batch(job_ids: list[str]) -> None:
                 "duration": job["duration"],
             }
 
+            # Per-job custom_prompt overrides global setting
+            effective_prompt = job["custom_prompt"] if job["custom_prompt"] else llm_settings["custom_prompt"]
+
             result = await summarize(
                 transcript=transcript,
                 keyframes=bj.keyframes,
                 video_meta=video_meta,
-                custom_prompt=llm_settings["custom_prompt"],
+                custom_prompt=effective_prompt,
                 model=llm_settings["model"],
                 keyframe_mode=KeyframeMode(bj.keyframe_mode_str),
                 ocr_paths=bj.ocr_paths,

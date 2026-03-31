@@ -58,6 +58,7 @@ async def init_db():
             ("dedup_mode", "'regular'"),
             ("keyframe_mode", "'image'"),
             ("warnings", "NULL"),
+            ("custom_prompt", "NULL"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE jobs ADD COLUMN {col} TEXT DEFAULT {default}")
