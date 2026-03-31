@@ -49,11 +49,11 @@ async def test_channel_videos(client):
 async def test_channel_videos_with_filters(client):
     resp = await client.get(
         f"/api/channel/{TEST_CHANNEL_ID}/videos",
-        params={"visibility": "public", "page": 1, "per_page": 5, "date_from": "20050101"},
+        params={"visibility": "public", "page": 1, "per_page": 5},
     )
     assert resp.status_code == 200
     videos = resp.json()
-    logger.info("Filtered channel videos: %d results, visibility filter=public, date_from=20050101", len(videos))
+    logger.info("Filtered channel videos: %d results, visibility filter=public", len(videos))
     assert isinstance(videos, list)
     # All should be public since we filtered
     assert all(v.get("visibility") == "public" for v in videos)

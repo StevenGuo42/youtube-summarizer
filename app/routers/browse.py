@@ -24,11 +24,9 @@ async def search_channels(q: str):
 @router.get("/channel/{channel_id}/videos")
 async def channel_videos(
     channel_id: str, visibility: str = "all", page: int = 1, per_page: int = 20,
-    date_from: str | None = None, date_to: str | None = None,
 ):
     return await _list_channel_videos(
         channel_id, visibility=visibility, page=page, per_page=per_page,
-        date_from=date_from, date_to=date_to,
     )
 
 

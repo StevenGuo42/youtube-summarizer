@@ -124,12 +124,10 @@ async def search_channels(query: str) -> list[dict]:
 
 async def list_channel_videos(
     channel_id: str, visibility: str = "all", page: int = 1, per_page: int = 20,
-    *, date_from: str | None = None, date_to: str | None = None
 ) -> list[dict]:
-    """List videos for a channel with visibility and date range filtering.
+    """List videos for a channel with visibility filtering.
 
     visibility: "all" (default), "public", or "members_only"
-    date_from/date_to: YYYYMMDD strings for date range filtering
     """
     # Always use /videos tab — /membership tab doesn't list videos
     url = f"https://www.youtube.com/channel/{channel_id}/videos"
@@ -144,9 +142,6 @@ async def list_channel_videos(
 
     def _list():
         import yt_dlp
-
-        if date_from or date_to:
-            opts["daterange"] = yt_dlp.utils.DateRange(date_from, date_to)
 
         with yt_dlp.YoutubeDL(opts) as ydl:
             result = ydl.extract_info(url, download=False)

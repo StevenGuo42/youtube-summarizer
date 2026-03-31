@@ -176,7 +176,7 @@ const browseState = {
   channelId: null,    // channel_id for channel URL fetches
   playlistId: null,   // playlist_id for playlist URL fetches
   page: 1,            // current page (reset on filter change or new URL)
-  filters: { visibility: 'all', dateFrom: '', dateTo: '' },
+  filters: { visibility: 'all' },
   selected: new Set(),  // selected video IDs
   videos: [],           // current video list data
 };
@@ -265,7 +265,7 @@ function renderVideoTable(videos, showVisibility) {
       p.className = 'empty-msg';
       p.style.color = '#7b8495';
       p.textContent = browseState.urlType === 'channel'
-        ? 'No videos found matching the current filters. Try adjusting the visibility or date range.'
+        ? 'No videos found matching the current filters. Try adjusting the visibility filter.'
         : 'This playlist contains no videos.';
       resultsDiv.appendChild(p);
     }
@@ -440,18 +440,6 @@ function buildResultsContainer(headerText, isChannel) {
           <option value="members_only">Members Only</option>
         </select>
       </label>
-      <fieldset>
-        <legend>Date Range</legend>
-        <div class="grid">
-          <button type="button" class="outline date-preset" data-preset="30d">Last 30 days</button>
-          <button type="button" class="outline date-preset" data-preset="1y">Last year</button>
-          <button type="button" class="outline date-preset" data-preset="all">All time</button>
-        </div>
-        <div class="grid">
-          <label>From <input type="date" id="filter-date-from"></label>
-          <label>To <input type="date" id="filter-date-to"></label>
-        </div>
-      </fieldset>
     `;
     resultsDiv.appendChild(filterDiv);
   }
@@ -519,8 +507,6 @@ function buildResultsContainer(headerText, isChannel) {
 async function fetchChannelVideos() {
   const { channelId, page, filters } = browseState;
   const params = new URLSearchParams({ visibility: filters.visibility, page, per_page: 20 });
-  if (filters.dateFrom) params.set('date_from', filters.dateFrom.replace(/-/g, ''));
-  if (filters.dateTo) params.set('date_to', filters.dateTo.replace(/-/g, ''));
 
   const resultsDiv = document.getElementById('browse-results');
   const videos = await apiFetch(`/api/channel/${channelId}/videos?${params}`, { container: resultsDiv });
@@ -589,7 +575,7 @@ async function handleBrowseFetch(e) {
   browseState.channelId = null;
   browseState.playlistId = null;
   browseState.page = 1;
-  browseState.filters = { visibility: 'all', dateFrom: '', dateTo: '' };
+  browseState.filters = { visibility: 'all' };
   browseState.selected.clear();
   browseState.videos = [];
   resultsDiv.innerHTML = '';
@@ -700,46 +686,6 @@ function bindFilterEvents() {
       browseState.page = 1;
       fetchChannelVideos();
     }
-    if (e.target.id === 'filter-date-from') {
-      browseState.filters.dateFrom = e.target.value;
-      browseState.page = 1;
-      fetchChannelVideos();
-    }
-    if (e.target.id === 'filter-date-to') {
-      browseState.filters.dateTo = e.target.value;
-      browseState.page = 1;
-      fetchChannelVideos();
-    }
-  });
-
-  // Date preset buttons (per D-10)
-  document.addEventListener('click', (e) => {
-    if (!e.target.classList.contains('date-preset')) return;
-    const preset = e.target.dataset.preset;
-    const fromInput = document.getElementById('filter-date-from');
-    const toInput = document.getElementById('filter-date-to');
-    if (!fromInput || !toInput) return;
-
-    const today = new Date();
-    if (preset === '30d') {
-      const from = new Date(today);
-      from.setDate(from.getDate() - 30);
-      fromInput.value = from.toISOString().slice(0, 10);
-      toInput.value = today.toISOString().slice(0, 10);
-    } else if (preset === '1y') {
-      const from = new Date(today);
-      from.setFullYear(from.getFullYear() - 1);
-      fromInput.value = from.toISOString().slice(0, 10);
-      toInput.value = today.toISOString().slice(0, 10);
-    } else if (preset === 'all') {
-      fromInput.value = '';
-      toInput.value = '';
-    }
-
-    browseState.filters.dateFrom = fromInput.value;
-    browseState.filters.dateTo = toInput.value;
-    browseState.page = 1;
-    fetchChannelVideos();
   });
 }
 

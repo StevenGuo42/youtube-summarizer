@@ -58,21 +58,6 @@ async def test_list_channel_videos_public():
     assert all(v.get("visibility") == "public" for v in videos)
 
 
-@pytest.mark.asyncio
-async def test_list_channel_videos_date_range():
-    # jawed's channel has videos from ~2005-2012
-    videos = await list_channel_videos(
-        TEST_CHANNEL_ID, page=1, per_page=5,
-        date_from="20050101", date_to="20251231",
-    )
-    logger.info("Date-filtered channel videos: %d results", len(videos))
-    assert isinstance(videos, list)
-    assert len(videos) > 0
-    # Verify upload_date is within range for entries that have it
-    for v in videos:
-        if v.get("upload_date"):
-            assert v["upload_date"] >= "20050101"
-            assert v["upload_date"] <= "20251231"
 
 
 @pytest.mark.asyncio
