@@ -134,15 +134,20 @@ async function apiFetch(path, opts = {}) {
 
 let browseDefaultPrompt = '';
 
+function promptPlaceholder() {
+  return browseDefaultPrompt || 'Leave empty to use default prompt...';
+}
+
 async function fetchDefaultPrompt() {
   if (browseDefaultPrompt) return;
   try {
     const settings = await apiFetch('/api/settings/llm');
     browseDefaultPrompt = settings.default_prompt || '';
-    const ta1 = document.getElementById('browse-custom-prompt');
-    const ta2 = document.getElementById('card-custom-prompt');
-    if (ta1) ta1.placeholder = browseDefaultPrompt || 'Leave empty to use default prompt...';
-    if (ta2) ta2.placeholder = browseDefaultPrompt || 'Leave empty to use default prompt...';
+    // Update any existing textareas with the real prompt
+    for (const id of ['browse-custom-prompt', 'card-custom-prompt']) {
+      const ta = document.getElementById(id);
+      if (ta) ta.placeholder = promptPlaceholder();
+    }
   } catch (e) {
     // Non-critical, use fallback placeholder
   }
@@ -215,7 +220,7 @@ function renderVideoCard(info) {
           </label>
         </div>
         <label for="card-custom-prompt">Custom Prompt (optional — overrides global setting)</label>
-        <textarea id="card-custom-prompt" rows="4" placeholder="Loading default prompt..."></textarea>
+        <textarea id="card-custom-prompt" rows="4" placeholder="${promptPlaceholder()}"></textarea>
         <button class="single-queue-btn" data-video-id="${info.id}">Add to Queue</button>
       </div>
     </div>
@@ -404,7 +409,7 @@ function buildResultsContainer(headerText, isChannel) {
   const promptDiv = document.createElement('div');
   promptDiv.innerHTML = `
     <label for="browse-custom-prompt">Custom Prompt (optional — overrides global setting)</label>
-    <textarea id="browse-custom-prompt" rows="4" placeholder="Loading default prompt..."></textarea>
+    <textarea id="browse-custom-prompt" rows="4" placeholder="${promptPlaceholder()}"></textarea>
   `;
   resultsDiv.appendChild(promptDiv);
   setTimeout(() => fetchDefaultPrompt(), 0);
@@ -654,6 +659,7 @@ document.addEventListener('DOMContentLoaded', () => {
     form.addEventListener('submit', handleBrowseFetch);
   }
   bindFilterEvents();
+  fetchDefaultPrompt();  // Pre-fetch so placeholder is ready before textareas are created
 });
 
 // Browse tab: event delegation for single-queue and pagination buttons
