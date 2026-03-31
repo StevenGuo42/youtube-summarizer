@@ -22,14 +22,14 @@ _OCR_MODES = {"ocr", "ocr+image", "ocr-inline", "ocr-inline+image"}
 
 
 async def _get_llm_settings() -> dict:
-    """Read custom_prompt and model from llm_settings table."""
+    """Read custom_prompt, custom_prompt_mode, and model from llm_settings table."""
     db = await get_db()
     try:
-        cursor = await db.execute("SELECT model, custom_prompt FROM llm_settings WHERE id = 1")
+        cursor = await db.execute("SELECT model, custom_prompt, custom_prompt_mode FROM llm_settings WHERE id = 1")
         row = await cursor.fetchone()
         if row:
-            return {"model": row["model"], "custom_prompt": row["custom_prompt"]}
-        return {"model": None, "custom_prompt": None}
+            return {"model": row["model"], "custom_prompt": row["custom_prompt"], "custom_prompt_mode": row["custom_prompt_mode"] or "replace"}
+        return {"model": None, "custom_prompt": None, "custom_prompt_mode": "replace"}
     finally:
         await db.close()
 
@@ -204,12 +204,14 @@ async def process_job(job_id: str) -> None:
 
             # Per-job custom_prompt overrides global setting
             effective_prompt = job["custom_prompt"] if job["custom_prompt"] else llm_settings["custom_prompt"]
+            effective_mode = job["custom_prompt_mode"] or "replace"
 
             result = await summarize(
                 transcript=transcript,
                 keyframes=keyframes,
                 video_meta=video_meta,
                 custom_prompt=effective_prompt,
+                custom_prompt_mode=effective_mode,
                 model=llm_settings["model"],
                 keyframe_mode=KeyframeMode(keyframe_mode_str),
                 ocr_paths=ocr_paths,
@@ -419,12 +421,14 @@ async def process_batch(job_ids: list[str]) -> None:
 
             # Per-job custom_prompt overrides global setting
             effective_prompt = job["custom_prompt"] if job["custom_prompt"] else llm_settings["custom_prompt"]
+            effective_mode = job["custom_prompt_mode"] or "replace"
 
             result = await summarize(
                 transcript=transcript,
                 keyframes=bj.keyframes,
                 video_meta=video_meta,
                 custom_prompt=effective_prompt,
+                custom_prompt_mode=effective_mode,
                 model=llm_settings["model"],
                 keyframe_mode=KeyframeMode(bj.keyframe_mode_str),
                 ocr_paths=bj.ocr_paths,

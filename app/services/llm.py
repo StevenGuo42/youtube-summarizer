@@ -56,12 +56,16 @@ async def get_auth_status() -> dict:
         logger.exception("Failed to check auth status")
         return {"loggedIn": False, "cli_error": True}
 
+PROMPT_PLACEHOLDER = "{{CUSTOM_INSTRUCTIONS}}"
+
 DEFAULT_PROMPT = """\
 You are summarizing a YouTube video. You will be given a timestamped transcript \
 with keyframe images interleaved at their corresponding timestamps.
 
 When you encounter a [KEYFRAME: filename] line, read that file to see what's \
 shown on screen at that point in the video.
+
+{{CUSTOM_INSTRUCTIONS}}
 
 Produce a summary in the following JSON format (and nothing else):
 
@@ -76,6 +80,23 @@ to organize the content clearly. Include timestamps where relevant (e.g. [2:30])
 
 Return ONLY valid JSON, no other text.
 """
+
+
+def build_system_prompt(
+    custom_prompt: str | None,
+    custom_prompt_mode: str = "replace",
+) -> str:
+    """Build the final system prompt based on mode.
+
+    mode="replace": custom_prompt replaces the entire default prompt.
+    mode="insert": custom_prompt is inserted at the {{CUSTOM_INSTRUCTIONS}} placeholder.
+    """
+    if not custom_prompt:
+        return DEFAULT_PROMPT.replace(PROMPT_PLACEHOLDER + "\n\n", "")
+    if custom_prompt_mode == "insert":
+        return DEFAULT_PROMPT.replace(PROMPT_PLACEHOLDER, custom_prompt)
+    # mode="replace"
+    return custom_prompt
 
 
 @dataclass
@@ -103,6 +124,7 @@ async def summarize(
     keyframes: list[KeyFrame],
     video_meta: dict,
     custom_prompt: str | None = None,
+    custom_prompt_mode: str = "replace",
     model: str | None = None,
     keyframe_mode: KeyframeMode = KeyframeMode.IMAGE,
     ocr_paths: list[Path | None] | None = None,
@@ -110,7 +132,9 @@ async def summarize(
 ) -> SummaryResult:
     """Summarize a video using Claude via the Agent SDK."""
     settings = await get_llm_settings()
-    system_prompt = custom_prompt or settings.get("custom_prompt") or DEFAULT_PROMPT
+    effective_prompt = custom_prompt or settings.get("custom_prompt")
+    effective_mode = custom_prompt_mode if custom_prompt else (settings.get("custom_prompt_mode") or "replace")
+    system_prompt = build_system_prompt(effective_prompt, effective_mode)
 
     # Build the user prompt with metadata
     parts = []

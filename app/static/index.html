@@ -72,6 +72,10 @@
                 <h3>LLM Configuration</h3>
                 <label>Model<input type="text" id="llm-model" placeholder="claude-sonnet-4-20250514"></label>
                 <label for="llm-prompt">Custom Prompt</label>
+                <select id="llm-prompt-mode">
+                    <option value="insert" selected>Insert into default prompt</option>
+                    <option value="replace">Replace entire default prompt</option>
+                </select>
                 <textarea id="llm-prompt" rows="10" placeholder="Leave empty to use default prompt..."></textarea>
                 <div class="settings-btn-row">
                     <button type="button" class="outline" id="llm-reset-btn">Reset to Default</button>
