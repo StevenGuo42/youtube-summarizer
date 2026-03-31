@@ -27,7 +27,7 @@
 
 - [ ] **Phase 9: Settings Tab Fixes** - Fix cookie upload, auth status, save persistence, and value reload
 - [ ] **Phase 10: Browse Tab Fixes** - Fix URL input styling, add channel pagination, add per-job custom prompt
-- [ ] **Phase 11: Queue Improvements** - Add clear button, eliminate polling flash, add batch processing toggle
+- [x] **Phase 11: Queue Improvements** - Add clear button, eliminate polling flash, add batch processing toggle (completed 2026-03-31)
 - [ ] **Phase 12: Summaries Fixes** - Fix processed video display and responsive view styles
 
 ## Phase Details
@@ -83,11 +83,11 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. User sees summaries for all videos that completed processing (no missing entries)
   2. User can switch between compact, list, and full view styles and each renders correctly at different viewport widths
-**Plans**: TBD
+**Plans**: 1 plan
 **UI hint**: yes
 
 Plans:
-- [ ] 12-01: TBD
+- [ ] 12-01-PLAN.md — Fix code fence parsing, responsive layout, and spinner shift
 
 ## Progress
 
@@ -103,8 +103,8 @@ Plans:
 | 8. Fix Tech Debt | v1.0 | 1/1 | Complete | 2026-03-30 |
 | 9. Settings Tab Fixes | v1.1 | 0/1 | Planning | - |
 | 10. Browse Tab Fixes | v1.1 | 0/0 | Not started | - |
-| 11. Queue Improvements | v1.1 | 1/2 | In progress | - |
-| 12. Summaries Fixes | v1.1 | 0/0 | Not started | - |
+| 11. Queue Improvements | v1.1 | 1/2 | Complete    | 2026-03-31 |
+| 12. Summaries Fixes | v1.1 | 0/1 | Planning | - |
 
 ---
 *Full v1.0 details: .planning/milestones/v1.0-ROADMAP.md*
