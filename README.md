@@ -1,4 +1,5 @@
-# YouTube Video Summarizer
+# YouTube Video Summarizer ![Badge](https://hitscounter.dev/api/hit?url=https%3A%2F%2Fgithub.com%2FStevenGuo42%2Fyoutube-summarizer&label=Visitors&icon=github&color=%23198754&message=&style=flat&tz=UTC)
+
 
 Self-hosted web app that summarizes YouTube videos using keyframe extraction, OCR, transcript analysis, and Claude AI. Supports members-only videos with cookie authentication.
 
