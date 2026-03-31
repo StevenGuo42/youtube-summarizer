@@ -61,12 +61,19 @@ async def download_video(video_id: str, output_dir: Path) -> Path:
 
 
 async def get_video_info(url: str) -> dict:
-    """Fetch metadata for a single video URL without downloading."""
+    """Fetch metadata for a single video URL without downloading.
+
+    For channel/playlist URLs, uses extract_flat to avoid enumerating all videos.
+    """
+    is_collection = any(p in url for p in ["/channel/", "/c/", "/@", "/playlist?"])
     opts = {
         **_base_opts(),
         "skip_download": True,
         "ignore_no_formats_error": True,
     }
+    if is_collection:
+        opts["extract_flat"] = True
+        opts["playlist_items"] = "0"  # metadata only, no entries
 
     def _fetch():
         import yt_dlp
