@@ -1411,8 +1411,24 @@ async function copySummary(jobId) {
     ? `${structured.title || ''}\n\n${structured.tldr || ''}\n\n${structured.summary || ''}`
     : data.raw_response || '';
 
-  try {
-    await navigator.clipboard.writeText(markdownText);
+  let copied = false;
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(markdownText);
+      copied = true;
+    } catch (err) { /* fall through to fallback */ }
+  }
+  if (!copied) {
+    const ta = document.createElement('textarea');
+    ta.value = markdownText;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    copied = document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+  if (copied) {
     const btn = document.querySelector(`.summary-copy-btn[data-job-id="${jobId}"]`);
     if (btn) {
       btn.textContent = 'Copied!';
@@ -1422,7 +1438,7 @@ async function copySummary(jobId) {
         btn.style.color = '';
       }, 2000);
     }
-  } catch (err) {
+  } else {
     showError(document.getElementById('summaries-container'), 'Failed to copy to clipboard. Try selecting the text manually.');
   }
 }
