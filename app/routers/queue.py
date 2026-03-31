@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, HTTPException
@@ -6,6 +7,8 @@ from pydantic import BaseModel
 from app.database import get_db
 from app.queue.worker import cancel, enqueue
 from app.services.ytdlp import get_video_info
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -16,6 +19,10 @@ class QueueRequest(BaseModel):
     keyframe_mode: str = "image"
     custom_prompt: str | None = None
     custom_prompt_mode: str = "replace"
+
+
+class DeleteRequest(BaseModel):
+    job_ids: list[str]
 
 
 @router.post("")
@@ -70,6 +77,45 @@ async def list_jobs():
         return [dict(row) for row in rows]
     finally:
         await db.close()
+
+
+@router.delete("")
+async def delete_jobs(req: DeleteRequest):
+    """Delete specific jobs by ID. Cancels active/pending jobs before deletion."""
+    for job_id in req.job_ids:
+        await cancel(job_id)
+
+    db = await get_db()
+    try:
+        placeholders = ",".join("?" for _ in req.job_ids)
+        cursor = await db.execute(
+            f"DELETE FROM jobs WHERE id IN ({placeholders})",
+            req.job_ids,
+        )
+        await db.commit()
+        deleted = cursor.rowcount
+    finally:
+        await db.close()
+
+    logger.info("Bulk deleted %d jobs (requested %d)", deleted, len(req.job_ids))
+    return {"deleted": deleted}
+
+
+@router.delete("/finished")
+async def clear_finished():
+    """Delete all finished jobs (done, failed, cancelled)."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "DELETE FROM jobs WHERE status IN ('done', 'failed', 'cancelled')"
+        )
+        await db.commit()
+        deleted = cursor.rowcount
+    finally:
+        await db.close()
+
+    logger.info("Cleared %d finished jobs", deleted)
+    return {"deleted": deleted}
 
 
 # Kept for v2: single-job detail view for future job detail page (no frontend consumer yet)
