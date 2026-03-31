@@ -244,12 +244,9 @@ nav a[data-tab] {
 .settings-status-fail { color: #b83f3b; }
 #cookie-paste-btn:disabled { opacity: 0.5; }
 
-/* Browse tab: fix URL input clipping in search form grid */
+/* Browse tab: fix URL input — Pico grid splits 50/50 by default */
 #browse-fetch-form .grid {
-  width: 100%;
-}
-#browse-fetch-form input[type="url"] {
-  min-width: 0;
+  grid-template-columns: 1fr auto;
 }
 
 /* Browse tab: custom prompt textarea */
