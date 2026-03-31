@@ -1,122 +1,109 @@
 # Roadmap: YouTube Video Summarizer
 
-## Overview
+## Milestones
 
-The backend is fully implemented. This milestone delivers the frontend SPA and one backend update (visibility/date filters). Phase 1 updates the backend API, Phase 2 builds the frontend shell and shared infrastructure, then Phases 3-6 build each tab as a vertical slice with full functionality.
+- ✅ **v1.0 MVP** — Phases 1-8 (shipped 2026-03-30)
+- 🚧 **v1.1 Bugfix & Polish** — Phases 9-12 (in progress)
 
 ## Phases
 
-**Phase Numbering:**
-- Integer phases (1, 2, 3): Planned milestone work
-- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+<details>
+<summary>✅ v1.0 MVP (Phases 1-8) — SHIPPED 2026-03-30</summary>
 
-Decimal phases appear between their surrounding integers in numeric order.
+- [x] Phase 1: Backend Filter Update (1/1 plan) — completed 2026-03-30
+- [x] Phase 2: Frontend Shell (1/1 plan) — completed 2026-03-30
+- [x] Phase 3: Browse & Queue Tab (1/1 plan) — completed 2026-03-30
+- [x] Phase 4: Queue & Progress Tab (1/1 plan) — completed 2026-03-30
+- [x] Phase 5: Summaries Tab (1/1 plan) — completed 2026-03-30
+- [x] Phase 6: Settings Tab (1/1 plan) — completed 2026-03-30
+- [x] Phase 7: Integration Fixes (1/1 plan) — completed 2026-03-30
+- [x] Phase 8: Fix Tech Debt (1/1 plan) — completed 2026-03-30
 
-- [ ] **Phase 1: Backend Filter Update** - Replace boolean members_only with visibility enum and add date range filtering
-- [x] **Phase 2: Frontend Shell** - Tab navigation, dark theme, responsive layout, and shared API/fetch utilities (completed 2026-03-30)
-- [ ] **Phase 3: Browse & Queue Tab** - URL input, video fetching, filtering, multi-select, and queue submission
-- [ ] **Phase 4: Queue & Progress Tab** - Job list with status badges, progress bars, cancel, and auto-refresh polling
-- [ ] **Phase 5: Summaries Tab** - Summary list, expandable detail view, copy, markdown export, and delete
-- [ ] **Phase 6: Settings Tab** - Cookie upload/management, LLM configuration, and Claude auth status
+</details>
+
+### 🚧 v1.1 Bugfix & Polish (In Progress)
+
+**Milestone Goal:** Fix frontend bugs from v1.0 launch and add missing polish features (queue management, batch mode UI, custom prompts per job).
+
+- [ ] **Phase 9: Settings Tab Fixes** - Fix cookie upload, auth status, save persistence, and value reload
+- [ ] **Phase 10: Browse Tab Fixes** - Fix URL input styling, add channel pagination, add per-job custom prompt
+- [ ] **Phase 11: Queue Improvements** - Add clear button, eliminate polling flash, add batch processing toggle
+- [ ] **Phase 12: Summaries Fixes** - Fix processed video display and responsive view styles
 
 ## Phase Details
 
-### Phase 1: Backend Filter Update
-**Goal**: Channel video listing supports flexible visibility and date range filtering
-**Depends on**: Nothing (first phase)
-**Requirements**: BACK-01, BACK-02, BACK-03, BACK-04
+### Phase 9: Settings Tab Fixes
+**Goal**: Users can reliably configure the app through a working settings tab
+**Depends on**: Nothing (first phase of v1.1)
+**Requirements**: SET-01, SET-02, SET-03, SET-04, SET-05, SET-06
 **Success Criteria** (what must be TRUE):
-  1. Calling the channel videos endpoint with visibility=members_only returns only members-only videos
-  2. Calling the channel videos endpoint with date_from and date_to returns only videos within that range
-  3. All existing browse and ytdlp tests pass with the updated signatures
-**Plans**: 1 plan
-
-Plans:
-- [ ] 01-01-PLAN.md — Update ytdlp service and browse router for visibility/date filtering, update all tests
-
-### Phase 2: Frontend Shell
-**Goal**: Users see a working app shell with tab navigation, dark theme, and all shared UI infrastructure in place
-**Depends on**: Nothing (independent of Phase 1)
-**Requirements**: CORE-01, CORE-02, CORE-03
-**Success Criteria** (what must be TRUE):
-  1. User sees a 4-tab navigation bar (Browse, Queue, Summaries, Settings) and can switch between tabs
-  2. App renders in Pico CSS dark theme by default with responsive layout on desktop and mobile viewports
-  3. A shared API helper function exists that handles fetch calls with loading states and error display
+  1. User can upload a cookies file via paste, file browser, or drag-and-drop and sees it reflected on the server
+  2. User sees Claude auth status (authenticated or not) without console errors or loading failures
+  3. User clicks save on LLM settings and sees confirmation feedback (not silence)
+  4. User refreshes the page and their saved model and custom prompt values are still populated
 **Plans**: 1 plan
 **UI hint**: yes
 
 Plans:
-- [x] 02-01-PLAN.md — HTML shell, tab routing, custom CSS, and apiFetch API helper
+- [x] 09-01-PLAN.md — Fix backend auth status distinction and all frontend settings bugs
 
-### Phase 3: Browse & Queue Tab
-**Goal**: Users can discover videos and submit them for processing
-**Depends on**: Phase 1, Phase 2
-**Requirements**: BRWS-01, BRWS-02, BRWS-03, BRWS-04, BRWS-05
+### Phase 10: Browse Tab Fixes
+**Goal**: Users can comfortably browse channels and attach custom prompts before queueing jobs
+**Depends on**: Phase 9
+**Requirements**: BRW-01, BRW-02, BRW-03
 **Success Criteria** (what must be TRUE):
-  1. User can paste a YouTube URL (video, channel, or playlist) and see video metadata displayed
-  2. User can filter displayed channel videos by visibility and date range
-  3. User can select individual videos or use Select All, then add them to the queue with a single action
-**Plans**: 1 plan
-**UI hint**: yes
-
-Plans:
-- [x] 03-01-PLAN.md — Browse tab HTML/CSS skeleton, all JS for URL input, video display, filters, pagination, selection, and queue submission
-
-### Phase 4: Queue & Progress Tab
-**Goal**: Users can monitor processing jobs and manage the queue
-**Depends on**: Phase 2
-**Requirements**: QUEU-01, QUEU-02, QUEU-03, QUEU-04, QUEU-05
-**Success Criteria** (what must be TRUE):
-  1. User can see all jobs with status badges showing the current pipeline step
-  2. Each job displays a progress bar that advances through pipeline stages
-  3. User can cancel a pending or in-progress job
-  4. Queue view updates automatically without manual refresh
-**Plans**: 1 plan
-**UI hint**: yes
-
-Plans:
-- [ ] 04-01-PLAN.md — Queue tab HTML/CSS and full JS for job cards, status badges, progress bars, cancel, and smart polling
-
-### Phase 5: Summaries Tab
-**Goal**: Users can review, share, and manage their completed summaries
-**Depends on**: Phase 2
-**Requirements**: SUMM-01, SUMM-02, SUMM-03, SUMM-04, SUMM-05
-**Success Criteria** (what must be TRUE):
-  1. User can see a list of completed summaries showing video title and date
-  2. User can expand any summary to read the full structured content
-  3. User can copy a summary to clipboard or download it as a .md file
-  4. User can delete a summary and it disappears from the list
-**Plans**: 1 plan
-**UI hint**: yes
-
-Plans:
-- [ ] 05-01-PLAN.md — Summaries tab HTML/CSS skeleton and full JS for summary list (3 view styles), inline expand with markdown rendering, copy/export/delete actions
-
-### Phase 6: Settings Tab
-**Goal**: Users can configure cookies, LLM settings, and verify auth status
-**Depends on**: Phase 2
-**Requirements**: SETT-01, SETT-02, SETT-03, SETT-04
-**Success Criteria** (what must be TRUE):
-  1. User can upload a cookies.txt file via drag-and-drop or file picker and see confirmation
-  2. User can view cookie status (loaded/not loaded) and clear cookies
-  3. User can configure LLM model and custom prompt, with changes persisted
-  4. User can see whether Claude OAuth is authenticated
+  1. User sees the full URL input box without right-side clipping on standard viewport widths
+  2. User can page through a large channel's video list (not forced to load all at once)
+  3. User can write a custom prompt and attach it to selected videos before adding them to the queue
 **Plans**: TBD
 **UI hint**: yes
 
 Plans:
-- [ ] 06-01: TBD
+- [ ] 10-01: TBD
+
+### Phase 11: Queue Improvements
+**Goal**: Users have smooth, responsive queue management with batch processing support
+**Depends on**: Phase 9
+**Requirements**: QUE-01, QUE-02, QUE-03
+**Success Criteria** (what must be TRUE):
+  1. User can clear all jobs from the queue with a single button click
+  2. Queue list updates in place without visible flash or full re-render when polling detects changes
+  3. User can toggle batch processing mode on or off from the UI and the backend respects the setting
+**Plans**: TBD
+**UI hint**: yes
+
+Plans:
+- [ ] 11-01: TBD
+
+### Phase 12: Summaries Fixes
+**Goal**: Users can view and browse all their completed summaries in any view style
+**Depends on**: Nothing (independent of other v1.1 phases)
+**Requirements**: SUM-01, SUM-02
+**Success Criteria** (what must be TRUE):
+  1. User sees summaries for all videos that completed processing (no missing entries)
+  2. User can switch between compact, list, and full view styles and each renders correctly at different viewport widths
+**Plans**: TBD
+**UI hint**: yes
+
+Plans:
+- [ ] 12-01: TBD
 
 ## Progress
 
-**Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1. Backend Filter Update | v1.0 | 1/1 | Complete | 2026-03-30 |
+| 2. Frontend Shell | v1.0 | 1/1 | Complete | 2026-03-30 |
+| 3. Browse & Queue Tab | v1.0 | 1/1 | Complete | 2026-03-30 |
+| 4. Queue & Progress Tab | v1.0 | 1/1 | Complete | 2026-03-30 |
+| 5. Summaries Tab | v1.0 | 1/1 | Complete | 2026-03-30 |
+| 6. Settings Tab | v1.0 | 1/1 | Complete | 2026-03-30 |
+| 7. Integration Fixes | v1.0 | 1/1 | Complete | 2026-03-30 |
+| 8. Fix Tech Debt | v1.0 | 1/1 | Complete | 2026-03-30 |
+| 9. Settings Tab Fixes | v1.1 | 0/1 | Planning | - |
+| 10. Browse Tab Fixes | v1.1 | 0/0 | Not started | - |
+| 11. Queue Improvements | v1.1 | 0/0 | Not started | - |
+| 12. Summaries Fixes | v1.1 | 0/0 | Not started | - |
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. Backend Filter Update | 0/1 | Not started | - |
-| 2. Frontend Shell | 1/1 | Complete   | 2026-03-30 |
-| 3. Browse & Queue Tab | 1/1 | Complete   | 2026-03-30 |
-| 4. Queue & Progress Tab | 0/1 | Planning complete | - |
-| 5. Summaries Tab | 0/1 | Planning complete | - |
-| 6. Settings Tab | 0/0 | Not started | - |
+---
+*Full v1.0 details: .planning/milestones/v1.0-ROADMAP.md*

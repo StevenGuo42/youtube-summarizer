@@ -1,117 +1,79 @@
 # Requirements: YouTube Video Summarizer
 
-**Defined:** 2026-03-29
+**Defined:** 2026-03-30
 **Core Value:** Submit a YouTube URL and get back a structured, visual-aware summary through a usable web interface.
 
-## v1 Requirements
+## v1.1 Requirements
 
-Requirements for completing the frontend milestone. Each maps to roadmap phases.
+Requirements for Bugfix & Polish milestone. Each maps to roadmap phases.
 
-### Backend Updates
+### Settings
 
-- [x] **BACK-01**: Channel videos endpoint accepts visibility filter (all/public/members_only) replacing boolean members_only
-- [x] **BACK-02**: Channel videos endpoint accepts date_from and date_to params (YYYYMMDD format) for date range filtering
-- [x] **BACK-03**: Browse router endpoint params updated to match new service signature
-- [x] **BACK-04**: ytdlp and browse tests updated for new visibility and date range params
+- [x] **SET-01**: User can upload cookies via paste content button and it saves to server
+- [x] **SET-02**: User can upload cookies via file browser and it saves to server
+- [x] **SET-03**: User can upload cookies via drag-and-drop and it saves to server
+- [x] **SET-04**: User sees Claude authentication status without errors when server is running
+- [x] **SET-05**: User sees confirmation feedback after clicking save settings
+- [x] **SET-06**: User's model and custom prompt values persist across page refresh
 
-### Browse Tab
+### Browse
 
-- [x] **BRWS-01**: User can enter a YouTube URL (video, channel, or playlist) and fetch video metadata
-- [x] **BRWS-02**: User can filter channel videos by visibility (All / Public / Members Only)
-- [x] **BRWS-03**: User can filter channel videos by date range (from / to date pickers)
-- [x] **BRWS-04**: User can select multiple videos via checkboxes with Select All / Deselect All
-- [x] **BRWS-05**: User can add selected videos to the processing queue
+- [ ] **BRW-01**: User sees properly styled URL input box without right-side clipping
+- [ ] **BRW-02**: User can load channel videos with pagination (not all at once)
+- [ ] **BRW-03**: User can set a custom prompt per job or group of jobs from the browse tab
 
-### Queue Tab
+### Queue
 
-- [x] **QUEU-01**: User can view all jobs with their current status (pending, downloading, transcribing, extracting, summarizing, done, failed)
-- [x] **QUEU-02**: Each job displays a status badge reflecting its pipeline step
-- [x] **QUEU-03**: Each job shows a progress bar indicating pipeline step progress
-- [x] **QUEU-04**: User can cancel pending or in-progress jobs
-- [x] **QUEU-05**: Queue view auto-refreshes via polling (every 2-3 seconds)
+- [ ] **QUE-01**: User can clear all jobs from the queue with a single button
+- [ ] **QUE-02**: Queue tab updates without full-page flash (diff-based updates, skip if no changes)
+- [ ] **QUE-03**: User can toggle batch processing mode from the queue or settings UI
 
-### Summaries Tab
+### Summaries
 
-- [x] **SUMM-01**: User can view a list of all completed summaries with video title and date
-- [x] **SUMM-02**: User can expand a summary to view the full structured content
-- [x] **SUMM-03**: User can copy a summary to clipboard
-- [x] **SUMM-04**: User can export a summary as markdown file
-- [x] **SUMM-05**: User can delete individual summaries
+- [ ] **SUM-01**: User sees summaries for successfully processed videos
+- [ ] **SUM-02**: User can switch between compact/list/full view styles and they render responsively
 
-### Settings Tab
+## Future Requirements
 
-- [ ] **SETT-01**: User can upload a cookies.txt file via drag-and-drop or file picker
-- [ ] **SETT-02**: User can see cookie status (loaded / not loaded) and clear cookies
-- [ ] **SETT-03**: User can configure LLM model selection and custom prompt
-- [ ] **SETT-04**: User can see Claude OAuth authentication status
+### v2 (Deferred)
 
-### Frontend Core
-
-- [x] **CORE-01**: Tab navigation works with Pico CSS dark theme default
-- [x] **CORE-02**: Responsive layout using semantic HTML and Pico CSS patterns
-- [x] **CORE-03**: All API calls use fetch() with proper error handling and loading states
-
-## v2 Requirements
-
-Deferred to future release. Tracked but not in current roadmap.
-
-### Enhanced Features
-
-- **ENH-01**: Theme toggle (dark/light) in nav bar
-- **ENH-02**: SSE-based real-time queue updates (replace polling)
-- **ENH-03**: Test Cookies button to probe members-only access
-- **ENH-04**: Multi-provider LLM support (OpenAI, Google, Ollama)
-- **ENH-05**: Estimated time remaining for processing jobs
-- **ENH-06**: Worker settings UI (processing mode, batch size)
+- **MULTI-01**: Multi-provider LLM support (OpenAI, Google, Ollama)
+- **DEPLOY-01**: Docker deployment configuration
+- **SEARCH-01**: Channel search functionality (orphaned endpoint exists)
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Docker deployment | Local-only for MVP |
-| Mobile app | Web-first |
-| User accounts / multi-user | Single-user self-hosted |
-| Real-time chat | Not relevant to summarization |
-| Video playback in UI | Summarization tool, not a player |
+| Mobile app | Web-first, single-user self-hosted |
+| Multi-user accounts | Single-user self-hosted app |
+| Real-time SSE for queue updates | Polling with diff-check sufficient for v1.1 |
+| New pipeline features | Backend pipeline is complete; v1.1 is frontend polish |
 
 ## Traceability
 
-Which phases cover which requirements. Updated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BACK-01 | Phase 1 | Complete |
-| BACK-02 | Phase 1 | Complete |
-| BACK-03 | Phase 1 | Complete |
-| BACK-04 | Phase 1 | Complete |
-| CORE-01 | Phase 2 | Complete |
-| CORE-02 | Phase 2 | Complete |
-| CORE-03 | Phase 2 | Complete |
-| BRWS-01 | Phase 3 | Complete |
-| BRWS-02 | Phase 3 | Complete |
-| BRWS-03 | Phase 3 | Complete |
-| BRWS-04 | Phase 3 | Complete |
-| BRWS-05 | Phase 3 | Complete |
-| QUEU-01 | Phase 4 | Complete |
-| QUEU-02 | Phase 4 | Complete |
-| QUEU-03 | Phase 4 | Complete |
-| QUEU-04 | Phase 4 | Complete |
-| QUEU-05 | Phase 4 | Complete |
-| SUMM-01 | Phase 5 | Complete |
-| SUMM-02 | Phase 5 | Complete |
-| SUMM-03 | Phase 5 | Complete |
-| SUMM-04 | Phase 5 | Complete |
-| SUMM-05 | Phase 5 | Complete |
-| SETT-01 | Phase 6 | Pending |
-| SETT-02 | Phase 6 | Pending |
-| SETT-03 | Phase 6 | Pending |
-| SETT-04 | Phase 6 | Pending |
+| SET-01 | Phase 9 | Complete |
+| SET-02 | Phase 9 | Complete |
+| SET-03 | Phase 9 | Complete |
+| SET-04 | Phase 9 | Complete |
+| SET-05 | Phase 9 | Complete |
+| SET-06 | Phase 9 | Complete |
+| BRW-01 | Phase 10 | Pending |
+| BRW-02 | Phase 10 | Pending |
+| BRW-03 | Phase 10 | Pending |
+| QUE-01 | Phase 11 | Pending |
+| QUE-02 | Phase 11 | Pending |
+| QUE-03 | Phase 11 | Pending |
+| SUM-01 | Phase 12 | Pending |
+| SUM-02 | Phase 12 | Pending |
 
 **Coverage:**
-- v1 requirements: 22 total
-- Mapped to phases: 22
+- v1.1 requirements: 14 total
+- Mapped to phases: 14
 - Unmapped: 0
 
 ---
-*Requirements defined: 2026-03-29*
-*Last updated: 2026-03-29 after roadmap creation*
+*Requirements defined: 2026-03-30*
+*Last updated: 2026-03-30 after roadmap creation*
