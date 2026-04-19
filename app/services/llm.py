@@ -85,6 +85,7 @@ Return ONLY valid JSON, no other text.
 def build_system_prompt(
     custom_prompt: str | None,
     custom_prompt_mode: str = "replace",
+    output_language: str | None = None,
 ) -> str:
     """Build the final system prompt based on mode.
 
@@ -92,11 +93,18 @@ def build_system_prompt(
     mode="insert": custom_prompt is inserted at the {{CUSTOM_INSTRUCTIONS}} placeholder.
     """
     if not custom_prompt:
-        return DEFAULT_PROMPT.replace(PROMPT_PLACEHOLDER + "\n\n", "")
-    if custom_prompt_mode == "insert":
-        return DEFAULT_PROMPT.replace(PROMPT_PLACEHOLDER, custom_prompt)
-    # mode="replace"
-    return custom_prompt
+        prompt = DEFAULT_PROMPT.replace(PROMPT_PLACEHOLDER + "\n\n", "")
+    elif custom_prompt_mode == "insert":
+        prompt = DEFAULT_PROMPT.replace(PROMPT_PLACEHOLDER, custom_prompt)
+    else:
+        prompt = custom_prompt
+
+    if output_language:
+        prompt += f"\n\nYou MUST write your entire response in {output_language}."
+    else:
+        prompt += "\n\nYou MUST write your entire response in the same language as the transcript."
+
+    return prompt
 
 
 @dataclass
@@ -129,12 +137,13 @@ async def summarize(
     keyframe_mode: KeyframeMode = KeyframeMode.IMAGE,
     ocr_paths: list[Path | None] | None = None,
     ocr_results: list | None = None,
+    output_language: str | None = None,
 ) -> SummaryResult:
     """Summarize a video using Claude via the Agent SDK."""
     settings = await get_llm_settings()
     effective_prompt = custom_prompt or settings.get("custom_prompt")
     effective_mode = custom_prompt_mode if custom_prompt else (settings.get("custom_prompt_mode") or "replace")
-    system_prompt = build_system_prompt(effective_prompt, effective_mode)
+    system_prompt = build_system_prompt(effective_prompt, effective_mode, output_language=output_language)
 
     # Build the user prompt with metadata
     parts = []
