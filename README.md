@@ -29,6 +29,7 @@ Self-hosted web app that summarizes YouTube videos using keyframe extraction, OC
 - Custom prompts with insert/replace modes
 - CLI for quick single-video summarization
 - Whisper fallback for videos without captions (auto language detection, multilingual)
+- Detected language shown in queue with translation indicator (e.g. `ja → en`)
 - Dark theme by default (Pico CSS)
 
 ## Requirements
