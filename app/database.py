@@ -61,6 +61,7 @@ async def init_db():
             ("custom_prompt", "NULL"),
             ("custom_prompt_mode", "'replace'"),
             ("output_language", "NULL"),
+            ("language", "NULL"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE jobs ADD COLUMN {col} TEXT DEFAULT {default}")
