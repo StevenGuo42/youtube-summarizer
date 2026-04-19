@@ -35,6 +35,7 @@ class QueueRequest(BaseModel):
     keyframe_mode: str = "image"
     custom_prompt: str | None = None
     custom_prompt_mode: str = "replace"
+    output_language: str | None = None
 
 
 class DeleteRequest(BaseModel):
@@ -58,8 +59,9 @@ async def add_to_queue(req: QueueRequest):
         try:
             await db.execute(
                 """INSERT INTO jobs (id, video_id, title, channel, duration, thumbnail_url,
-                                    dedup_mode, keyframe_mode, custom_prompt, custom_prompt_mode, status)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
+                                    dedup_mode, keyframe_mode, custom_prompt, custom_prompt_mode,
+                                    output_language, status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
                 (
                     job_id,
                     video_id,
@@ -71,6 +73,7 @@ async def add_to_queue(req: QueueRequest):
                     req.keyframe_mode,
                     req.custom_prompt,
                     req.custom_prompt_mode,
+                    req.output_language,
                 ),
             )
             await db.commit()

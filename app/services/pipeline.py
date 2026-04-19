@@ -25,11 +25,11 @@ async def _get_llm_settings() -> dict:
     """Read custom_prompt, custom_prompt_mode, and model from llm_settings table."""
     db = await get_db()
     try:
-        cursor = await db.execute("SELECT model, custom_prompt, custom_prompt_mode FROM llm_settings WHERE id = 1")
+        cursor = await db.execute("SELECT model, custom_prompt, custom_prompt_mode, output_language FROM llm_settings WHERE id = 1")
         row = await cursor.fetchone()
         if row:
-            return {"model": row["model"], "custom_prompt": row["custom_prompt"], "custom_prompt_mode": row["custom_prompt_mode"] or "replace"}
-        return {"model": None, "custom_prompt": None, "custom_prompt_mode": "replace"}
+            return {"model": row["model"], "custom_prompt": row["custom_prompt"], "custom_prompt_mode": row["custom_prompt_mode"] or "replace", "output_language": row["output_language"]}
+        return {"model": None, "custom_prompt": None, "custom_prompt_mode": "replace", "output_language": None}
     finally:
         await db.close()
 
@@ -205,6 +205,7 @@ async def process_job(job_id: str) -> None:
             # Per-job custom_prompt overrides global setting
             effective_prompt = job["custom_prompt"] if job["custom_prompt"] else llm_settings["custom_prompt"]
             effective_mode = job["custom_prompt_mode"] or "replace"
+            effective_language = job["output_language"] or llm_settings.get("output_language")
 
             result = await summarize(
                 transcript=transcript,
@@ -216,6 +217,7 @@ async def process_job(job_id: str) -> None:
                 keyframe_mode=KeyframeMode(keyframe_mode_str),
                 ocr_paths=ocr_paths,
                 ocr_results=ocr_results,
+                output_language=effective_language,
             )
             logger.info("[%s] Summary generated: %d chars", job_id, len(result.raw_response))
 
@@ -422,6 +424,7 @@ async def process_batch(job_ids: list[str]) -> None:
             # Per-job custom_prompt overrides global setting
             effective_prompt = job["custom_prompt"] if job["custom_prompt"] else llm_settings["custom_prompt"]
             effective_mode = job["custom_prompt_mode"] or "replace"
+            effective_language = job["output_language"] or llm_settings.get("output_language")
 
             result = await summarize(
                 transcript=transcript,
@@ -433,6 +436,7 @@ async def process_batch(job_ids: list[str]) -> None:
                 keyframe_mode=KeyframeMode(bj.keyframe_mode_str),
                 ocr_paths=bj.ocr_paths,
                 ocr_results=bj.ocr_results,
+                output_language=effective_language,
             )
 
             summary_id = str(uuid.uuid4())
