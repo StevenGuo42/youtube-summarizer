@@ -19,7 +19,7 @@ async def _insert_job(job_id: str, video_id: str, status: str):
     db = await get_db()
     try:
         await db.execute(
-            """INSERT INTO jobs (id, video_id, status, error, warnings)
+            """INSERT OR REPLACE INTO jobs (id, video_id, status, error, warnings)
                VALUES (?, ?, ?, ?, ?)""",
             (job_id, video_id, status, "some error" if status == "failed" else None,
              '["warning1"]' if status == "failed" else None),
