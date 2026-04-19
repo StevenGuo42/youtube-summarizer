@@ -1254,85 +1254,24 @@ function renderSummaryCard(summary) {
   return article;
 }
 
+const _markedRenderer = new marked.Renderer();
+_markedRenderer.heading = function ({ depth, text }) {
+  const level = Math.min(depth + 2, 6);
+  return `<h${level}>${text}</h${level}>`;
+};
+_markedRenderer.link = function ({ href, text }) {
+  return `<a href="${href}" target="_blank" rel="noopener">${text}</a>`;
+};
+marked.setOptions({ renderer: _markedRenderer, breaks: false, gfm: true });
+
 function renderMarkdown(text) {
   if (!text) return '';
-
-  // Step 0: Extract code blocks and replace with placeholders
-  const codeBlocks = [];
-  let result = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
-    const idx = codeBlocks.length;
-    codeBlocks.push(`<pre><code>${code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`);
-    return `<!--CODE_BLOCK_${idx}-->`;
-  });
-
-  // Step 1: Headings (shift down: # -> h3, ## -> h4, ### -> h5)
-  result = result.replace(/^### (.+)$/gm, '<h5>$1</h5>');
-  result = result.replace(/^## (.+)$/gm, '<h4>$1</h4>');
-  result = result.replace(/^# (.+)$/gm, '<h3>$1</h3>');
-
-  // Step 2: Inline formatting
-  result = result.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  result = result.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  result = result.replace(/`([^`]+)`/g, '<code>$1</code>');
-  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-
-  // Step 3: Block-level elements (blockquotes, lists)
-  // Blockquotes
-  result = result.replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>');
-  // Merge consecutive blockquotes
-  result = result.replace(/<\/blockquote>\n<blockquote>/g, '\n');
-
-  // Unordered lists: consecutive lines starting with "- "
-  result = result.replace(/(^- .+$(\n^- .+$)*)/gm, (match) => {
-    const items = match.split('\n').map(line => `<li>${line.replace(/^- /, '')}</li>`).join('');
-    return `<ul>${items}</ul>`;
-  });
-
-  // Ordered lists: consecutive lines starting with "N. "
-  result = result.replace(/(^\d+\. .+$(\n^\d+\. .+$)*)/gm, (match) => {
-    const items = match.split('\n').map(line => `<li>${line.replace(/^\d+\. /, '')}</li>`).join('');
-    return `<ol>${items}</ol>`;
-  });
-
-  // Step 4: Tables (pipe-delimited rows with separator)
-  result = result.replace(/(^\|.+\|$\n^\|[-| :]+\|$\n(^\|.+\|$\n?)+)/gm, (match) => {
-    const rows = match.trim().split('\n');
-    const parseRow = row => row.split('|').slice(1, -1).map(c => c.trim());
-    const headers = parseRow(rows[0]);
-    const aligns = parseRow(rows[1]).map(c => {
-      if (c.startsWith(':') && c.endsWith(':')) return 'center';
-      if (c.endsWith(':')) return 'right';
-      return 'left';
-    });
-    const thead = '<thead><tr>' + headers.map((h, i) => `<th style="text-align:${aligns[i]}">${h}</th>`).join('') + '</tr></thead>';
-    const tbody = '<tbody>' + rows.slice(2).map(row => {
-      const cells = parseRow(row);
-      return '<tr>' + cells.map((c, i) => `<td style="text-align:${aligns[i] || 'left'}">${c}</td>`).join('') + '</tr>';
-    }).join('') + '</tbody>';
-    return `<table>${thead}${tbody}</table>`;
-  });
-
-  // Step 5: Paragraph breaks (empty lines -> <br>)
-  result = result.replace(/\n\n+/g, '<br><br>');
-  result = result.replace(/\n/g, '\n');
-
-  // Step 6: Restore code blocks
-  for (let i = 0; i < codeBlocks.length; i++) {
-    result = result.replace(`<!--CODE_BLOCK_${i}-->`, codeBlocks[i]);
-  }
-
-  return result;
+  return marked.parse(text);
 }
 
 function sanitizeHtml(html) {
   if (!html) return '';
-  // Remove dangerous tags and their contents
-  let clean = html.replace(/<(script|iframe|object|embed)[^>]*>[\s\S]*?<\/\1>/gi, '');
-  // Remove self-closing variants
-  clean = clean.replace(/<(script|iframe|object|embed)[^>]*\/?>/gi, '');
-  // Remove on* event handler attributes
-  clean = clean.replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]*)/gi, '');
-  return clean;
+  return DOMPurify.sanitize(html);
 }
 
 async function expandSummary(jobId) {
