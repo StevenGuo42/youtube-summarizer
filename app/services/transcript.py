@@ -28,7 +28,6 @@ class TranscriptResult:
     language: str | None = None
 
 
-
 async def extract_transcript(
     video_id: str, video_path: Path | None, work_dir: Path,
     whisper_model=None,

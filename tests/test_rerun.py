@@ -83,6 +83,19 @@ async def test_rerun_done_job_rejected():
 
 
 @pytest.mark.asyncio
+async def test_rerun_processing_job_rejected():
+    """Cannot rerun a job that is currently processing."""
+    from app.routers.queue import _reset_job_for_rerun
+
+    await _insert_job("test-proc-1", "dQw4w9WgXcQ", "processing")
+    result = await _reset_job_for_rerun("test-proc-1")
+    assert result is False
+
+    job = await _get_job("test-proc-1")
+    assert job["status"] == "processing"
+
+
+@pytest.mark.asyncio
 async def test_rerun_nonexistent_job():
     """Rerunning a nonexistent job returns False."""
     from app.routers.queue import _reset_job_for_rerun
