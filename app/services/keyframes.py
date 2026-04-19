@@ -167,7 +167,8 @@ def _dedup_by_ssim(keyframes: list[KeyFrame], threshold: float = 0.95) -> list[K
 
     # Load and convert to grayscale, resize for speed
     def _load(kf):
-        return np.array(Image.open(kf.image_path).convert("L").resize((256, 256)))
+        with Image.open(kf.image_path) as img:
+            return np.array(img.convert("L").resize((256, 256)))
 
     imgs = [_load(kf) for kf in keyframes]
 
@@ -195,7 +196,8 @@ def _dedup_by_phash(keyframes: list[KeyFrame], threshold: int = 5) -> list[KeyFr
 
     hashes = []
     for kf in keyframes:
-        hashes.append(imagehash.phash(Image.open(kf.image_path)))
+        with Image.open(kf.image_path) as img:
+            hashes.append(imagehash.phash(img))
 
     # Track groups: each group is a list of indices
     groups: list[list[int]] = [[0]]

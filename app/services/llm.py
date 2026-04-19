@@ -8,9 +8,9 @@ from pathlib import Path
 
 from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
 
-from app.database import get_db
 from app.services.keyframes import KeyFrame
 from app.services.transcript import TranscriptResult
+from app.settings import get_llm_settings as _get_llm_settings
 
 logger = logging.getLogger(__name__)
 
@@ -115,16 +115,8 @@ class SummaryResult:
     summary: str
 
 
-async def get_llm_settings() -> dict:
-    db = await get_db()
-    try:
-        row = await db.execute("SELECT * FROM llm_settings WHERE id = 1")
-        row = await row.fetchone()
-        if row:
-            return dict(row)
-        return {}
-    finally:
-        await db.close()
+def get_llm_settings() -> dict:
+    return _get_llm_settings()
 
 
 async def summarize(
@@ -140,7 +132,7 @@ async def summarize(
     output_language: str | None = None,
 ) -> SummaryResult:
     """Summarize a video using Claude via the Agent SDK."""
-    settings = await get_llm_settings()
+    settings = get_llm_settings()
     effective_prompt = custom_prompt or settings.get("custom_prompt")
     effective_mode = custom_prompt_mode if custom_prompt else (settings.get("custom_prompt_mode") or "replace")
     system_prompt = build_system_prompt(effective_prompt, effective_mode, output_language=output_language)

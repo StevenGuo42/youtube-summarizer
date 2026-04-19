@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app.database import init_db
 from app.queue.worker import start_worker, stop_worker
 from app.routers import auth, browse, queue, settings, summaries
+from app.shutdown import request_shutdown
 
 
 @asynccontextmanager
@@ -14,6 +15,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     await start_worker()
     yield
+    request_shutdown()
     await stop_worker()
 
 

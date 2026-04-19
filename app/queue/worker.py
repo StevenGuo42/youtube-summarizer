@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from app.database import get_db
+from app.settings import get_worker_settings as _get_worker_settings
 
 logger = logging.getLogger(__name__)
 
@@ -11,16 +12,7 @@ _cancelled: set[str] = set()
 
 
 async def get_worker_settings() -> dict:
-    """Read worker settings from database."""
-    db = await get_db()
-    try:
-        cursor = await db.execute("SELECT * FROM worker_settings WHERE id = 1")
-        row = await cursor.fetchone()
-        if row:
-            return dict(row)
-        return {"processing_mode": "sequential", "batch_size": 5}
-    finally:
-        await db.close()
+    return _get_worker_settings()
 
 
 async def _drain_queue(batch_size: int) -> list[str]:

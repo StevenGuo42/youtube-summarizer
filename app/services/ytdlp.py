@@ -11,17 +11,26 @@ from app.config import COOKIES_PATH, VIDEO_FORMAT
 _tmp_cookies: Path | None = None
 
 
+_cookies_source_mtime: float | None = None
+
+
 def _get_tmp_cookies() -> str | None:
-    """Copy cookies to a temp file on first use. Returns temp path or None."""
-    global _tmp_cookies
+    """Copy cookies to a temp file, refreshing when source changes. Returns temp path or None."""
+    global _tmp_cookies, _cookies_source_mtime
     if not COOKIES_PATH.exists():
+        _tmp_cookies = None
+        _cookies_source_mtime = None
         return None
-    if _tmp_cookies and _tmp_cookies.exists():
+    source_mtime = COOKIES_PATH.stat().st_mtime
+    if _tmp_cookies and _tmp_cookies.exists() and _cookies_source_mtime == source_mtime:
         return str(_tmp_cookies)
+    if _tmp_cookies and _tmp_cookies.exists():
+        _tmp_cookies.unlink(missing_ok=True)
     fd, path = tempfile.mkstemp(suffix=".txt", prefix="yt_cookies_")
     import os
     os.close(fd)
     _tmp_cookies = Path(path)
+    _cookies_source_mtime = source_mtime
     shutil.copy2(COOKIES_PATH, _tmp_cookies)
     return str(_tmp_cookies)
 

@@ -9,6 +9,7 @@ from app.config import TMP_DIR
 from app.database import get_db
 from app.services.keyframes import KeyFrame, extract_keyframes, deduplicate_keyframes
 from app.services.llm import summarize, KeyframeMode
+from app.settings import get_llm_settings
 from app.services.ocr import extract_text, save_ocr_results
 from app.services.transcript import extract_transcript, TranscriptResult
 from app.services.ytdlp import download_video
@@ -21,17 +22,8 @@ STEPS = ["downloading", "transcribing", "extracting_keyframes", "deduplicating",
 _OCR_MODES = {"ocr", "ocr+image", "ocr-inline", "ocr-inline+image"}
 
 
-async def _get_llm_settings() -> dict:
-    """Read custom_prompt, custom_prompt_mode, model, and output_language from llm_settings table."""
-    db = await get_db()
-    try:
-        cursor = await db.execute("SELECT model, custom_prompt, custom_prompt_mode, output_language FROM llm_settings WHERE id = 1")
-        row = await cursor.fetchone()
-        if row:
-            return {"model": row["model"], "custom_prompt": row["custom_prompt"], "custom_prompt_mode": row["custom_prompt_mode"] or "replace", "output_language": row["output_language"]}
-        return {"model": None, "custom_prompt": None, "custom_prompt_mode": "replace", "output_language": None}
-    finally:
-        await db.close()
+def _get_llm_settings() -> dict:
+    return get_llm_settings()
 
 
 async def _update_job(job_id: str, **kwargs):
@@ -87,7 +79,7 @@ async def process_job(job_id: str) -> None:
     work_dir = TMP_DIR / job_id
     work_dir.mkdir(exist_ok=True)
 
-    llm_settings = await _get_llm_settings()
+    llm_settings = _get_llm_settings()
 
     transcript = None
     keyframes: list[KeyFrame] = []
@@ -307,7 +299,7 @@ async def process_batch(job_ids: list[str]) -> None:
     if not batch:
         return
 
-    llm_settings = await _get_llm_settings()
+    llm_settings = _get_llm_settings()
 
     # Step 1: Download all
     for bj in _active(batch):

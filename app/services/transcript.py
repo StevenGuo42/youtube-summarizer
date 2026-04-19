@@ -9,6 +9,7 @@ import torch
 
 from app.config import COOKIES_PATH, WHISPER_MODEL_DIR
 from app.services.ytdlp import _base_opts
+from app.shutdown import is_shutting_down
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,7 @@ def _detect_language(audio_path: str) -> str | None:
         return None
     finally:
         del model
+        gc.collect()
 
 
 def load_whisper_model():
@@ -229,6 +231,8 @@ async def _transcribe_whisper(video_path: Path, work_dir: Path, whisper_model=No
 
         last_error = None
         for model_name, device, compute_type in configs:
+            if is_shutting_down():
+                raise RuntimeError("Whisper transcription interrupted by shutdown")
             logger.info("Trying whisper model=%s device=%s compute_type=%s language=%s",
                         model_name, device, compute_type, language)
             model = None
@@ -255,9 +259,9 @@ async def _transcribe_whisper(video_path: Path, work_dir: Path, whisper_model=No
                 logger.warning("Whisper failed with %s/%s: %s", model_name, device, e)
                 continue
             finally:
+                del model
+                gc.collect()
                 if device == "cuda":
-                    del model
-                    gc.collect()
                     torch.cuda.empty_cache()
 
         raise RuntimeError(f"All whisper configurations failed: {last_error}")
