@@ -102,6 +102,8 @@ async def process_job(job_id: str) -> None:
         try:
             transcript = await extract_transcript(video_id, video_path, work_dir)
             logger.info("[%s] Transcript: %s, %d segments", job_id, transcript.source, len(transcript.segments))
+            if transcript.language:
+                await _update_job(job_id, language=transcript.language)
         except Exception:
             logger.exception("[%s] Transcript extraction failed", job_id)
             await _add_warning(job_id, "Transcript extraction failed, using keyframes only")
@@ -317,6 +319,8 @@ async def process_batch(job_ids: list[str]) -> None:
         try:
             bj.transcript = await extract_transcript(bj.video_id, bj.video_path, bj.work_dir)
             logger.info("[%s] Transcript: %s, %d segments", bj.job_id, bj.transcript.source, len(bj.transcript.segments))
+            if bj.transcript.language:
+                await _update_job(bj.job_id, language=bj.transcript.language)
         except Exception:
             logger.exception("[%s] Transcript extraction failed", bj.job_id)
             await _add_warning(bj.job_id, "Transcript extraction failed, using keyframes only")

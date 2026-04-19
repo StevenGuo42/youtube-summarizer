@@ -851,7 +851,7 @@ function renderJobCard(job) {
         <strong>${job.title || 'Untitled'}</strong>
         <small class="created-time">${formatCreatedTime(job.created_at)}</small>
       </div>
-      <small style="color:#7b8495">${job.channel || 'Unknown'} / ${formatDuration(job.duration)} / ${job.dedup_mode} / ${job.keyframe_mode}</small>
+      <small style="color:#7b8495">${job.channel || 'Unknown'} / ${formatDuration(job.duration)}${job.language ? ' / ' + (job.output_language && job.output_language !== job.language ? job.language + ' → ' + job.output_language : job.language) : (job.output_language ? ' / → ' + job.output_language : '')} / ${job.dedup_mode} / ${job.keyframe_mode}</small>
       <div style="margin-top:0.25rem">
         <mark class="badge-${job.status}">${badgeText}</mark>
         <small class="step-label">${label}</small>
