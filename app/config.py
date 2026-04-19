@@ -1,5 +1,13 @@
 import os
+import site
 from pathlib import Path
+
+# Ensure nvidia-cublas-cu12 libs are on LD_LIBRARY_PATH (CTranslate2 needs libcublas.so.12)
+for _site_dir in site.getsitepackages():
+    _cublas_lib = Path(_site_dir) / "nvidia" / "cublas" / "lib"
+    if _cublas_lib.is_dir() and str(_cublas_lib) not in os.environ.get("LD_LIBRARY_PATH", ""):
+        os.environ["LD_LIBRARY_PATH"] = f"{_cublas_lib}:{os.environ.get('LD_LIBRARY_PATH', '')}"
+        break
 
 # Ensure nvm-managed Node.js is on PATH (needed by yt-dlp EJS challenge solver)
 _nvm_dir = Path(os.environ.get("NVM_DIR", Path.home() / ".nvm"))

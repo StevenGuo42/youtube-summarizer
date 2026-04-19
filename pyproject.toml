@@ -11,6 +11,7 @@ dependencies = [
     "claude-agent-sdk>=0.1.53",
     "fastapi>=0.135.2",
     "faster-whisper>=1.2.1",
+    "nvidia-cublas-cu12>=12.9",
     "google-genai>=1.69.0",
     "httpx>=0.28.1",
     "imagehash>=4.3.2",
