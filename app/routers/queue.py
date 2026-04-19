@@ -13,6 +13,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def _reset_job_for_rerun(job_id: str) -> bool:
+    """Reset a failed/cancelled job to pending. Returns True if reset, False otherwise."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            """UPDATE jobs SET status = 'pending', error = NULL, current_step = NULL,
+                              warnings = NULL, updated_at = CURRENT_TIMESTAMP
+               WHERE id = ? AND status IN ('failed', 'cancelled')""",
+            (job_id,),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+    finally:
+        await db.close()
+
+
 class QueueRequest(BaseModel):
     video_ids: list[str]
     dedup_mode: str = "regular"
@@ -140,3 +156,13 @@ async def cancel_job(job_id: str):
     if not success:
         raise HTTPException(status_code=404, detail="Job not found or already completed")
     return {"status": "cancelled"}
+
+
+@router.post("/{job_id}/rerun")
+async def rerun_job(job_id: str):
+    """Rerun a failed or cancelled job."""
+    success = await _reset_job_for_rerun(job_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="Job not found or not in a rerunnable state")
+    await enqueue(job_id)
+    return {"status": "requeued"}
