@@ -60,6 +60,7 @@ async def init_db():
             ("warnings", "NULL"),
             ("custom_prompt", "NULL"),
             ("custom_prompt_mode", "'replace'"),
+            ("output_language", "NULL"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE jobs ADD COLUMN {col} TEXT DEFAULT {default}")
@@ -69,6 +70,11 @@ async def init_db():
         # Migrations for llm_settings table
         try:
             await db.execute("ALTER TABLE llm_settings ADD COLUMN custom_prompt_mode TEXT DEFAULT 'replace'")
+        except Exception:
+            pass  # Column already exists
+
+        try:
+            await db.execute("ALTER TABLE llm_settings ADD COLUMN output_language TEXT DEFAULT NULL")
         except Exception:
             pass  # Column already exists
 
