@@ -1522,7 +1522,7 @@ document.addEventListener('click', (e) => {
     exportSummary(e.target.dataset.jobId);
     return;
   }
-  if (e.target.classList.contains('summary-delete-btn')) {
+  if (e.target.classList.contains('summary-delete-btn') && e.target.id !== 'summaries-delete-selected-btn') {
     e.stopPropagation();
     deleteSummary(e.target.dataset.jobId);
     return;
