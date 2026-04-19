@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.database import get_db
 from app.services.llm import DEFAULT_PROMPT, PROMPT_PLACEHOLDER, get_auth_status
+from app.settings import get_llm_settings, save_llm_settings, get_worker_settings, save_worker_settings
 
 router = APIRouter()
 
@@ -31,49 +31,26 @@ class LLMConfigResponse(BaseModel):
 
 @router.get("/llm")
 async def get_llm_config() -> LLMConfigResponse:
-    db = await get_db()
-    try:
-        row = await db.execute("SELECT * FROM llm_settings WHERE id = 1")
-        row = await row.fetchone()
-        if row:
-            return LLMConfigResponse(
-                model=row["model"] or "claude-sonnet-4-20250514",
-                custom_prompt=row["custom_prompt"],
-                custom_prompt_mode=row["custom_prompt_mode"] or "replace",
-                output_language=row["output_language"],
-                default_prompt=DEFAULT_PROMPT,
-                prompt_placeholder=PROMPT_PLACEHOLDER,
-            )
-        return LLMConfigResponse(
-            model="claude-sonnet-4-20250514",
-            custom_prompt=None,
-            custom_prompt_mode="replace",
-            output_language=None,
-            default_prompt=DEFAULT_PROMPT,
-            prompt_placeholder=PROMPT_PLACEHOLDER,
-        )
-    finally:
-        await db.close()
+    settings = get_llm_settings()
+    return LLMConfigResponse(
+        model=settings.get("model") or "claude-sonnet-4-20250514",
+        custom_prompt=settings.get("custom_prompt"),
+        custom_prompt_mode=settings.get("custom_prompt_mode") or "replace",
+        output_language=settings.get("output_language"),
+        default_prompt=DEFAULT_PROMPT,
+        prompt_placeholder=PROMPT_PLACEHOLDER,
+    )
 
 
 @router.post("/llm")
 async def save_llm_config(config: LLMConfig):
-    db = await get_db()
-    try:
-        await db.execute(
-            """INSERT INTO llm_settings (id, model, custom_prompt, custom_prompt_mode, output_language)
-               VALUES (1, ?, ?, ?, ?)
-               ON CONFLICT(id) DO UPDATE SET
-                 model = excluded.model,
-                 custom_prompt = excluded.custom_prompt,
-                 custom_prompt_mode = excluded.custom_prompt_mode,
-                 output_language = excluded.output_language""",
-            (config.model, config.custom_prompt, config.custom_prompt_mode, config.output_language),
-        )
-        await db.commit()
-        return {"status": "ok"}
-    finally:
-        await db.close()
+    save_llm_settings(
+        model=config.model,
+        custom_prompt=config.custom_prompt,
+        custom_prompt_mode=config.custom_prompt_mode,
+        output_language=config.output_language,
+    )
+    return {"status": "ok"}
 
 
 class WorkerConfig(BaseModel):
@@ -86,37 +63,19 @@ class WorkerConfigResponse(BaseModel):
     batch_size: int
 
 
-# Kept for v2: worker settings UI is ENH-06 (no frontend consumer yet)
 @router.get("/worker")
 async def get_worker_config() -> WorkerConfigResponse:
-    db = await get_db()
-    try:
-        row = await db.execute("SELECT * FROM worker_settings WHERE id = 1")
-        row = await row.fetchone()
-        if row:
-            return WorkerConfigResponse(
-                processing_mode=row["processing_mode"],
-                batch_size=row["batch_size"],
-            )
-        return WorkerConfigResponse(processing_mode="sequential", batch_size=5)
-    finally:
-        await db.close()
+    settings = get_worker_settings()
+    return WorkerConfigResponse(
+        processing_mode=settings["processing_mode"],
+        batch_size=settings["batch_size"],
+    )
 
 
-# Kept for v2: worker settings UI is ENH-06 (no frontend consumer yet)
 @router.post("/worker")
 async def save_worker_config(config: WorkerConfig):
-    db = await get_db()
-    try:
-        await db.execute(
-            """INSERT INTO worker_settings (id, processing_mode, batch_size)
-               VALUES (1, ?, ?)
-               ON CONFLICT(id) DO UPDATE SET
-                 processing_mode = excluded.processing_mode,
-                 batch_size = excluded.batch_size""",
-            (config.processing_mode, config.batch_size),
-        )
-        await db.commit()
-        return {"status": "ok"}
-    finally:
-        await db.close()
+    save_worker_settings(
+        processing_mode=config.processing_mode,
+        batch_size=config.batch_size,
+    )
+    return {"status": "ok"}

@@ -9,6 +9,7 @@ from PIL import Image
 
 from app.config import OCR_MODEL_DIR, OCR_MODEL_NAME, OCR_PROMPT_TYPE
 from app.services.keyframes import KeyFrame
+from app.shutdown import is_shutting_down
 
 logger = logging.getLogger(__name__)
 
@@ -81,12 +82,19 @@ def _run_ocr(keyframes: list[KeyFrame], model_tuple=None) -> list[OcrResult]:
     try:
         results = []
         for kf in keyframes:
+            if is_shutting_down():
+                logger.info("OCR interrupted by shutdown")
+                break
             try:
-                batch = [BatchInputItem(
-                    image=Image.open(kf.image_path),
-                    prompt_type=OCR_PROMPT_TYPE,
-                )]
-                gen_result = generate_hf(batch, model)[0]
+                img = Image.open(kf.image_path)
+                try:
+                    batch = [BatchInputItem(
+                        image=img,
+                        prompt_type=OCR_PROMPT_TYPE,
+                    )]
+                    gen_result = generate_hf(batch, model)[0]
+                finally:
+                    img.close()
                 text = parse_markdown(gen_result.raw)
                 results.append(OcrResult(
                     timestamp=kf.timestamp,
