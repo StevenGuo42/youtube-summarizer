@@ -17,12 +17,14 @@ class LLMConfig(BaseModel):
     model: str = "claude-sonnet-4-20250514"
     custom_prompt: str | None = None
     custom_prompt_mode: str = "replace"
+    output_language: str | None = None
 
 
 class LLMConfigResponse(BaseModel):
     model: str
     custom_prompt: str | None
     custom_prompt_mode: str
+    output_language: str | None
     default_prompt: str
     prompt_placeholder: str
 
@@ -38,6 +40,7 @@ async def get_llm_config() -> LLMConfigResponse:
                 model=row["model"] or "claude-sonnet-4-20250514",
                 custom_prompt=row["custom_prompt"],
                 custom_prompt_mode=row["custom_prompt_mode"] or "replace",
+                output_language=row["output_language"],
                 default_prompt=DEFAULT_PROMPT,
                 prompt_placeholder=PROMPT_PLACEHOLDER,
             )
@@ -45,6 +48,7 @@ async def get_llm_config() -> LLMConfigResponse:
             model="claude-sonnet-4-20250514",
             custom_prompt=None,
             custom_prompt_mode="replace",
+            output_language=None,
             default_prompt=DEFAULT_PROMPT,
             prompt_placeholder=PROMPT_PLACEHOLDER,
         )
@@ -57,13 +61,14 @@ async def save_llm_config(config: LLMConfig):
     db = await get_db()
     try:
         await db.execute(
-            """INSERT INTO llm_settings (id, model, custom_prompt, custom_prompt_mode)
-               VALUES (1, ?, ?, ?)
+            """INSERT INTO llm_settings (id, model, custom_prompt, custom_prompt_mode, output_language)
+               VALUES (1, ?, ?, ?, ?)
                ON CONFLICT(id) DO UPDATE SET
                  model = excluded.model,
                  custom_prompt = excluded.custom_prompt,
-                 custom_prompt_mode = excluded.custom_prompt_mode""",
-            (config.model, config.custom_prompt, config.custom_prompt_mode),
+                 custom_prompt_mode = excluded.custom_prompt_mode,
+                 output_language = excluded.output_language""",
+            (config.model, config.custom_prompt, config.custom_prompt_mode, config.output_language),
         )
         await db.commit()
         return {"status": "ok"}
