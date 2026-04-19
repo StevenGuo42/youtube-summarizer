@@ -1,6 +1,6 @@
 // --- Tab Routing ---
 
-const TABS = ['browse', 'queue', 'summaries', 'settings'];
+const TABS = ['browse', 'queue', 'summaries', 'settings', 'help'];
 const DEFAULT_TAB = 'browse';
 
 function switchTab(tabId) {
@@ -235,6 +235,9 @@ function renderVideoCard(info) {
               <option value="ocr-inline+image">OCR Inline + Image</option>
               <option value="none">None</option>
             </select>
+          </label>
+          <label>Output Language
+            <input type="text" id="card-language" placeholder="Default (from settings)">
           </label>
         </div>
         <label for="card-custom-prompt">Custom Prompt (optional)</label>
@@ -473,6 +476,9 @@ function buildResultsContainer(headerText, isChannel) {
         <option value="batch">Batch</option>
       </select>
     </label>
+    <label>Output Language
+      <input type="text" id="browse-language" placeholder="Default (from settings)">
+    </label>
   `;
   resultsDiv.appendChild(optionsDiv);
 
@@ -622,11 +628,12 @@ async function submitSingleToQueue(videoId) {
   const keyframeMode = document.getElementById('card-keyframe-mode').value;
   const customPrompt = document.getElementById('card-custom-prompt')?.value.trim() || null;
   const promptMode = document.getElementById('card-prompt-mode')?.value || 'replace';
+  const langVal = document.getElementById('card-language')?.value.trim() || null;
 
   try {
     await apiFetch('/api/queue', {
       method: 'POST',
-      body: { video_ids: [videoId], dedup_mode: dedupMode, keyframe_mode: keyframeMode, custom_prompt: customPrompt, custom_prompt_mode: promptMode },
+      body: { video_ids: [videoId], dedup_mode: dedupMode, keyframe_mode: keyframeMode, custom_prompt: customPrompt, custom_prompt_mode: promptMode, output_language: langVal },
       container: resultsDiv,
     });
     showSuccess(resultsDiv, '1 video added to queue.', { href: '#queue', text: 'View Queue' });
@@ -644,11 +651,12 @@ async function submitSelectedToQueue() {
   const keyframeMode = document.getElementById('keyframe-mode').value;
   const customPrompt = document.getElementById('browse-custom-prompt')?.value.trim() || null;
   const promptMode = document.getElementById('browse-prompt-mode')?.value || 'replace';
+  const langVal = document.getElementById('browse-language')?.value.trim() || null;
 
   try {
     await apiFetch('/api/queue', {
       method: 'POST',
-      body: { video_ids: videoIds, dedup_mode: dedupMode, keyframe_mode: keyframeMode, custom_prompt: customPrompt, custom_prompt_mode: promptMode },
+      body: { video_ids: videoIds, dedup_mode: dedupMode, keyframe_mode: keyframeMode, custom_prompt: customPrompt, custom_prompt_mode: promptMode, output_language: langVal },
       container: resultsDiv,
     });
     showSuccess(resultsDiv, videoIds.length + ' video(s) added to queue.', { href: '#queue', text: 'View Queue' });
@@ -831,6 +839,8 @@ function renderJobCard(job) {
     actionsHtml = `<button class="outline cancel-btn" data-job-id="${job.id}">Cancel Job</button>`;
   } else if (job.status === 'done') {
     actionsHtml = `<a href="#summaries" class="view-summary-link" data-job-id="${job.id}">View Summary</a>`;
+  } else if (job.status === 'failed' || job.status === 'cancelled') {
+    actionsHtml = `<button class="outline rerun-btn" data-job-id="${job.id}">Rerun</button>`;
   }
 
   article.innerHTML = `
@@ -1006,6 +1016,15 @@ async function cancelJob(jobId) {
   }
 }
 
+async function rerunJob(jobId) {
+  try {
+    await apiFetch(`/api/queue/${jobId}/rerun`, { method: 'POST' });
+    fetchJobs();
+  } catch (err) {
+    // apiFetch already handles error display
+  }
+}
+
 function hasActiveJobs() {
   return queueState.jobs.some(j => j.status === 'pending' || j.status === 'processing');
 }
@@ -1040,6 +1059,10 @@ document.addEventListener('click', (e) => {
   if (e.target.classList.contains('cancel-btn')) {
     const jobId = e.target.dataset.jobId;
     if (jobId) cancelJob(jobId);
+  }
+  if (e.target.classList.contains('rerun-btn')) {
+    const jobId = e.target.dataset.jobId;
+    if (jobId) rerunJob(jobId);
   }
   if (e.target.classList.contains('view-summary-link')) {
     e.preventDefault();
@@ -1631,7 +1654,7 @@ async function loadSettings() {
       apiFetch('/api/settings/auth/claude'),
     ]);
     settingsState.cookieStatus = cookieRes;
-    settingsState.llmConfig = { model: llmRes.model, custom_prompt: llmRes.custom_prompt, custom_prompt_mode: llmRes.custom_prompt_mode || 'replace' };
+    settingsState.llmConfig = { model: llmRes.model, custom_prompt: llmRes.custom_prompt, custom_prompt_mode: llmRes.custom_prompt_mode || 'replace', output_language: llmRes.output_language || '' };
     settingsState.defaultPrompt = llmRes.default_prompt;
     settingsState.authStatus = authRes;
     renderCookieStatus();
@@ -1700,6 +1723,8 @@ function renderLlmConfig() {
   if (modelInput) modelInput.value = settingsState.llmConfig.model;
   if (promptArea) promptArea.value = settingsState.llmConfig.custom_prompt || '';
   if (modeSelect) modeSelect.value = settingsState.llmConfig.custom_prompt_mode || 'replace';
+  const langInput = document.getElementById('llm-language');
+  if (langInput) langInput.value = settingsState.llmConfig.output_language || '';
 }
 
 async function saveLlmConfig() {
@@ -1708,10 +1733,12 @@ async function saveLlmConfig() {
   const promptVal = document.getElementById('llm-prompt').value.trim();
   const custom_prompt = promptVal === '' ? null : promptVal;
   const custom_prompt_mode = document.getElementById('llm-prompt-mode')?.value || 'replace';
+  const langVal = document.getElementById('llm-language').value.trim();
+  const output_language = langVal === '' ? null : langVal;
   try {
     await apiFetch('/api/settings/llm', {
       method: 'POST',
-      body: { model, custom_prompt, custom_prompt_mode },
+      body: { model, custom_prompt, custom_prompt_mode, output_language },
       container: card,
     });
     card.removeAttribute('aria-busy');
@@ -1763,10 +1790,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Drop zone drag-and-drop
   const dropZone = document.getElementById('cookie-drop-zone');
   if (dropZone) {
-    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-    dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('drag-over'); });
+    let dragCounter = 0;
+    dropZone.addEventListener('dragenter', (e) => { e.preventDefault(); dragCounter++; dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); });
+    dropZone.addEventListener('dragleave', () => { dragCounter--; if (dragCounter <= 0) { dragCounter = 0; dropZone.classList.remove('drag-over'); } });
     dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
+      e.stopPropagation();
+      dragCounter = 0;
       dropZone.classList.remove('drag-over');
       const file = e.dataTransfer.files[0];
       if (file && file.name.endsWith('.txt')) {

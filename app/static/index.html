@@ -18,6 +18,7 @@
                 <li><a href="#queue" data-tab="queue">Queue</a></li>
                 <li><a href="#summaries" data-tab="summaries">Summaries</a></li>
                 <li><a href="#settings" data-tab="settings">Settings</a></li>
+                <li><a href="#help" data-tab="help">Help</a></li>
             </ul>
         </nav>
 
@@ -84,6 +85,7 @@
             <article id="llm-card">
                 <h3>LLM Configuration</h3>
                 <label>Model<input type="text" id="llm-model" placeholder="claude-sonnet-4-20250514"></label>
+                <label>Output Language<input type="text" id="llm-language" placeholder="Leave empty to follow video language"></label>
                 <label for="llm-prompt">Custom Prompt</label>
                 <select id="llm-prompt-mode">
                     <option value="insert" selected>Insert into default prompt</option>
@@ -99,6 +101,66 @@
             <article id="auth-card">
                 <h3>Claude Authentication</h3>
                 <p id="auth-status"></p>
+            </article>
+        </section>
+        <section id="help" hidden>
+            <h2>Help</h2>
+
+            <article>
+                <h3>Browse</h3>
+                <p>Paste a YouTube URL into the search bar to fetch video information. Supports single videos, channels, and playlists.</p>
+                <p>For channels, you can filter by visibility (public, members-only, or all). Select one or more videos, configure processing options, then click <strong>Add to Queue</strong>.</p>
+            </article>
+
+            <article>
+                <h3>Queue</h3>
+                <p>Shows all processing jobs and their current status. Active jobs display a progress bar showing which pipeline step is running.</p>
+                <p>You can cancel active jobs, rerun failed or cancelled jobs, select jobs for bulk deletion, or clear all finished jobs.</p>
+            </article>
+
+            <article>
+                <h3>Summaries</h3>
+                <p>View completed summaries in compact or list view. Click a summary to expand and see its TL;DR, full summary, and transcript. You can export summaries as markdown or delete them.</p>
+            </article>
+
+            <article>
+                <h3>Settings</h3>
+                <dl>
+                    <dt>Cookies</dt>
+                    <dd>Upload a cookies.txt file to access members-only content. You can drag and drop, browse for a file, or paste the content directly.</dd>
+                    <dt>LLM Model</dt>
+                    <dd>The Claude model used for summarization (e.g. claude-sonnet-4-20250514).</dd>
+                    <dt>Output Language</dt>
+                    <dd>Set a language for summaries (e.g. "Japanese", "Spanish"). Leave empty to match the video's language.</dd>
+                    <dt>Custom Prompt</dt>
+                    <dd><strong>Insert</strong> mode adds your instructions to the default prompt. <strong>Replace</strong> mode uses your text as the entire prompt.</dd>
+                    <dt>Claude Authentication</dt>
+                    <dd>Shows whether Claude OAuth is configured. Run <code>claude auth login</code> in your terminal to authenticate.</dd>
+                </dl>
+            </article>
+
+            <article>
+                <h3>Processing Options</h3>
+                <dl>
+                    <dt>Dedup Mode</dt>
+                    <dd>
+                        <strong>Regular</strong> &mdash; Removes similar keyframes using perceptual hashing. Good for most videos.<br>
+                        <strong>Slides</strong> &mdash; Uses structural similarity (SSIM). Better for presentations and slideshows.<br>
+                        <strong>OCR</strong> &mdash; Compares extracted text from keyframes. Best when on-screen text changes indicate new content.<br>
+                        <strong>None</strong> &mdash; Keeps all extracted keyframes.
+                    </dd>
+                    <dt>Keyframe Mode</dt>
+                    <dd>
+                        <strong>Image</strong> &mdash; Sends keyframe images to the LLM for visual context.<br>
+                        <strong>OCR</strong> &mdash; Sends OCR-extracted text files instead of images.<br>
+                        <strong>OCR + Image</strong> &mdash; Sends both OCR text files and images.<br>
+                        <strong>OCR Inline</strong> &mdash; Embeds OCR text directly in the transcript.<br>
+                        <strong>OCR Inline + Image</strong> &mdash; Embeds OCR text in the transcript and sends images.<br>
+                        <strong>None</strong> &mdash; Uses transcript only, no keyframe data.
+                    </dd>
+                    <dt>Output Language</dt>
+                    <dd>Override the default output language for this job. Leave empty to use the default from Settings.</dd>
+                </dl>
             </article>
         </section>
     </main>
