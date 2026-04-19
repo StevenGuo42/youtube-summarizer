@@ -18,7 +18,7 @@ Self-hosted web app that summarizes YouTube videos using keyframe extraction, OC
 
 ## Features
 
-- Full web UI with 4 tabs: Browse, Queue, Summaries, Settings
+- Full web UI with 5 tabs: Browse, Queue, Summaries, Settings, Help
 - YouTube video, channel, and playlist browsing with visibility filters
 - Multi-video queue with sequential and batch processing modes
 - GPU-accelerated pipeline: download, transcript, keyframes, dedup, OCR, summarize
@@ -26,7 +26,10 @@ Self-hosted web app that summarizes YouTube videos using keyframe extraction, OC
 - 6 keyframe modes for LLM summarization: image, ocr, ocr+image, ocr-inline, ocr-inline+image, none
 - Claude AI summarization via Agent SDK (OAuth auth, no API key needed)
 - Members-only video support via cookie authentication
+- Output language control (per-job, global default, or auto-detect from transcript)
+- Rerun failed or cancelled jobs from the queue
 - Custom prompts with insert/replace modes
+- Markdown rendering in summaries (tables, lists, headings via marked.js + DOMPurify)
 - CLI for quick single-video summarization
 - Whisper fallback for videos without captions (auto language detection, multilingual)
 - Detected language shown in queue with translation indicator (e.g. `ja → en`)
@@ -70,12 +73,13 @@ claude auth login
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Open `http://localhost:8000` in your browser. The web app has 4 tabs:
+Open `http://localhost:8000` in your browser. The web app has 5 tabs:
 
 - **Browse** -- Search channels, browse playlists, filter by visibility, select videos to queue
 - **Queue** -- View job progress through pipeline steps, cancel or delete jobs, batch operations
 - **Summaries** -- View completed summaries with structured output, export as markdown, delete
 - **Settings** -- Configure LLM model and custom prompts, manage cookies, adjust worker settings
+- **Help** -- Quick reference for keyframe modes, dedup modes, and pipeline steps
 
 ### CLI
 
@@ -171,6 +175,7 @@ Cookies can also be uploaded via the Settings tab in the web UI. They expire eve
 | `DELETE /api/queue/finished` | Clear all finished jobs (done/failed/cancelled) |
 | `GET /api/queue/{id}` | Get single job status |
 | `DELETE /api/queue/{id}` | Cancel a pending/processing job |
+| `POST /api/queue/{id}/rerun` | Rerun a failed or cancelled job |
 
 ### Summaries
 
@@ -210,6 +215,8 @@ youtube-summarizer/
 │   ├── main.py             # FastAPI app + lifecycle
 │   ├── config.py           # Paths, constants, nvm setup
 │   ├── database.py         # SQLite schema + access
+│   ├── settings.py         # JSON-based settings (LLM, worker)
+│   ├── shutdown.py         # Graceful shutdown + GPU cleanup
 │   ├── routers/            # API endpoints
 │   │   ├── auth.py         # Cookie upload/status
 │   │   ├── browse.py       # Channel/playlist/video browsing
