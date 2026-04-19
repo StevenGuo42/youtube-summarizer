@@ -9,12 +9,14 @@ from cli import _resolve_keyframe_mode
 from app.database import init_db
 from app.services.llm import (
     DEFAULT_PROMPT,
+    PROMPT_PLACEHOLDER,
     KeyframeMode,
     SummaryResult,
     _build_interleaved_transcript,
     _format_duration,
     _format_timestamp,
     _parse_response,
+    build_system_prompt,
     get_auth_status,
     summarize,
 )
@@ -364,6 +366,36 @@ class TestBuildInterleavedTranscript:
         result = _build_interleaved_transcript(transcript, keyframes)
         logger.info("No duration -> falls back to last segment end:\n%s", result)
         assert "[0:00 - 0:06]" in result
+
+
+class TestBuildSystemPrompt:
+    def test_no_language_appends_follow_transcript(self):
+        """No output_language appends 'same language as the transcript'."""
+        result = build_system_prompt(None)
+        assert "You MUST write your entire response in the same language as the transcript." in result
+
+    def test_specific_language(self):
+        """Specific output_language appends explicit instruction."""
+        result = build_system_prompt(None, output_language="Japanese")
+        assert "You MUST write your entire response in Japanese." in result
+        assert "same language as the transcript" not in result
+
+    def test_empty_string_language_follows_transcript(self):
+        """Empty string output_language treated same as None."""
+        result = build_system_prompt(None, output_language="")
+        assert "same language as the transcript" in result
+
+    def test_language_with_custom_prompt_insert(self):
+        """Language instruction appended after custom prompt insertion."""
+        result = build_system_prompt("Focus on key points.", custom_prompt_mode="insert", output_language="French")
+        assert "Focus on key points." in result
+        assert "You MUST write your entire response in French." in result
+
+    def test_language_with_custom_prompt_replace(self):
+        """Language instruction appended even with replace mode."""
+        result = build_system_prompt("My custom prompt.", custom_prompt_mode="replace", output_language="Korean")
+        assert result.startswith("My custom prompt.")
+        assert "You MUST write your entire response in Korean." in result
 
 
 class TestResolveKeyframeMode:
