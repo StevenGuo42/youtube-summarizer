@@ -1294,11 +1294,29 @@ function renderMarkdown(text) {
     return `<ol>${items}</ol>`;
   });
 
-  // Step 4: Paragraph breaks (empty lines -> <br>)
+  // Step 4: Tables (pipe-delimited rows with separator)
+  result = result.replace(/(^\|.+\|$\n^\|[-| :]+\|$\n(^\|.+\|$\n?)+)/gm, (match) => {
+    const rows = match.trim().split('\n');
+    const parseRow = row => row.split('|').slice(1, -1).map(c => c.trim());
+    const headers = parseRow(rows[0]);
+    const aligns = parseRow(rows[1]).map(c => {
+      if (c.startsWith(':') && c.endsWith(':')) return 'center';
+      if (c.endsWith(':')) return 'right';
+      return 'left';
+    });
+    const thead = '<thead><tr>' + headers.map((h, i) => `<th style="text-align:${aligns[i]}">${h}</th>`).join('') + '</tr></thead>';
+    const tbody = '<tbody>' + rows.slice(2).map(row => {
+      const cells = parseRow(row);
+      return '<tr>' + cells.map((c, i) => `<td style="text-align:${aligns[i] || 'left'}">${c}</td>`).join('') + '</tr>';
+    }).join('') + '</tbody>';
+    return `<table>${thead}${tbody}</table>`;
+  });
+
+  // Step 5: Paragraph breaks (empty lines -> <br>)
   result = result.replace(/\n\n+/g, '<br><br>');
   result = result.replace(/\n/g, '\n');
 
-  // Step 5: Restore code blocks
+  // Step 6: Restore code blocks
   for (let i = 0; i < codeBlocks.length; i++) {
     result = result.replace(`<!--CODE_BLOCK_${i}-->`, codeBlocks[i]);
   }
