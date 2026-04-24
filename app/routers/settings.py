@@ -1,8 +1,15 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.services.llm import DEFAULT_PROMPT, PROMPT_PLACEHOLDER, get_auth_status
-from app.settings import get_llm_settings, save_llm_settings, get_worker_settings, save_worker_settings
+from app.settings import (
+    get_llm_settings,
+    save_llm_settings,
+    get_worker_settings,
+    save_worker_settings,
+    get_default_options,
+    save_default_options,
+)
 
 router = APIRouter()
 
@@ -77,5 +84,33 @@ async def save_worker_config(config: WorkerConfig):
     save_worker_settings(
         processing_mode=config.processing_mode,
         batch_size=config.batch_size,
+    )
+    return {"status": "ok"}
+
+
+class DefaultOptions(BaseModel):
+    dedup_mode: str = "regular"
+    keyframe_mode: str = "image"
+
+
+_ALLOWED_DEDUP = {"regular", "slides", "ocr", "none"}
+_ALLOWED_KEYFRAME = {"image", "ocr", "ocr+image", "ocr-inline", "ocr-inline+image", "none"}
+
+
+@router.get("/defaults")
+async def get_defaults() -> DefaultOptions:
+    opts = get_default_options()
+    return DefaultOptions(**opts)
+
+
+@router.post("/defaults")
+async def save_defaults(config: DefaultOptions):
+    if config.dedup_mode not in _ALLOWED_DEDUP:
+        raise HTTPException(status_code=422, detail=f"invalid dedup_mode: {config.dedup_mode}")
+    if config.keyframe_mode not in _ALLOWED_KEYFRAME:
+        raise HTTPException(status_code=422, detail=f"invalid keyframe_mode: {config.keyframe_mode}")
+    save_default_options(
+        dedup_mode=config.dedup_mode,
+        keyframe_mode=config.keyframe_mode,
     )
     return {"status": "ok"}

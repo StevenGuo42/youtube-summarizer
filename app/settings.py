@@ -21,6 +21,10 @@ _DEFAULTS: dict[str, Any] = {
         "processing_mode": "sequential",
         "batch_size": 5,
     },
+    "defaults": {
+        "dedup_mode": "regular",
+        "keyframe_mode": "image",
+    },
 }
 
 
@@ -86,4 +90,24 @@ def save_worker_settings(
     if batch_size is not None:
         worker["batch_size"] = batch_size
     settings["worker"] = worker
+    _write_settings(settings)
+
+
+def get_default_options() -> dict:
+    settings = _read_settings()
+    defaults = settings.get("defaults", {})
+    return {**_DEFAULTS["defaults"], **{k: v for k, v in defaults.items() if v is not None}}
+
+
+def save_default_options(
+    dedup_mode: str | None = None,
+    keyframe_mode: str | None = None,
+) -> None:
+    settings = _read_settings()
+    defaults = settings.get("defaults", {})
+    if dedup_mode is not None:
+        defaults["dedup_mode"] = dedup_mode
+    if keyframe_mode is not None:
+        defaults["keyframe_mode"] = keyframe_mode
+    settings["defaults"] = defaults
     _write_settings(settings)

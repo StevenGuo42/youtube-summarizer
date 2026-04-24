@@ -158,29 +158,31 @@ async function fetchDefaultPrompt() {
   }
 }
 
-const DEDUP_MODES = ['regular', 'slides', 'ocr', 'none'];
-const KEYFRAME_MODES = ['image', 'ocr', 'ocr+image', 'ocr-inline', 'ocr-inline+image', 'none'];
+let defaultProcessingOptions = { dedup_mode: 'regular', keyframe_mode: 'image' };
+let defaultOptionsLoaded = false;
 
-function getDefaultDedupMode() {
-  const v = localStorage.getItem('default-dedup-mode');
-  return DEDUP_MODES.includes(v) ? v : 'regular';
+async function loadDefaultProcessingOptions() {
+  try {
+    const data = await apiFetch('/api/settings/defaults');
+    defaultProcessingOptions = {
+      dedup_mode: data.dedup_mode || 'regular',
+      keyframe_mode: data.keyframe_mode || 'image',
+    };
+    defaultOptionsLoaded = true;
+  } catch (e) {
+    // Keep fallback defaults
+  }
 }
 
-function getDefaultKeyframeMode() {
-  const v = localStorage.getItem('default-keyframe-mode');
-  return KEYFRAME_MODES.includes(v) ? v : 'image';
-}
-
-function applyProcessingDefaults() {
-  const dedup = getDefaultDedupMode();
-  const keyframe = getDefaultKeyframeMode();
+async function applyProcessingDefaults() {
+  if (!defaultOptionsLoaded) await loadDefaultProcessingOptions();
   for (const id of ['dedup-mode', 'card-dedup-mode']) {
     const el = document.getElementById(id);
-    if (el) el.value = dedup;
+    if (el) el.value = defaultProcessingOptions.dedup_mode;
   }
   for (const id of ['keyframe-mode', 'card-keyframe-mode']) {
     const el = document.getElementById(id);
-    if (el) el.value = keyframe;
+    if (el) el.value = defaultProcessingOptions.keyframe_mode;
   }
 }
 
@@ -1738,11 +1740,27 @@ function resetPromptToDefault() {
   document.getElementById('llm-prompt').value = settingsState.defaultPrompt;
 }
 
-function renderDefaultModes() {
+async function renderDefaultModes() {
+  await loadDefaultProcessingOptions();
   const dedupSel = document.getElementById('default-dedup-mode');
   const keyframeSel = document.getElementById('default-keyframe-mode');
-  if (dedupSel) dedupSel.value = getDefaultDedupMode();
-  if (keyframeSel) keyframeSel.value = getDefaultKeyframeMode();
+  if (dedupSel) dedupSel.value = defaultProcessingOptions.dedup_mode;
+  if (keyframeSel) keyframeSel.value = defaultProcessingOptions.keyframe_mode;
+}
+
+async function saveDefaultProcessingOptions() {
+  try {
+    await apiFetch('/api/settings/defaults', {
+      method: 'POST',
+      body: {
+        dedup_mode: defaultProcessingOptions.dedup_mode,
+        keyframe_mode: defaultProcessingOptions.keyframe_mode,
+      },
+      container: document.getElementById('defaults-card'),
+    });
+  } catch (e) {
+    // apiFetch renders error in container
+  }
 }
 
 function renderAuthStatus() {
@@ -1855,13 +1873,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target.classList.contains('settings-clear-btn')) clearCookies();
   });
 
-  // Default processing options — persist to localStorage on change
+  // Default processing options — persist to server on change
   document.addEventListener('change', (e) => {
     if (e.target.id === 'default-dedup-mode') {
-      localStorage.setItem('default-dedup-mode', e.target.value);
+      defaultProcessingOptions.dedup_mode = e.target.value;
+      saveDefaultProcessingOptions();
     }
     if (e.target.id === 'default-keyframe-mode') {
-      localStorage.setItem('default-keyframe-mode', e.target.value);
+      defaultProcessingOptions.keyframe_mode = e.target.value;
+      saveDefaultProcessingOptions();
     }
   });
 
