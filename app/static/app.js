@@ -158,6 +158,32 @@ async function fetchDefaultPrompt() {
   }
 }
 
+const DEDUP_MODES = ['regular', 'slides', 'ocr', 'none'];
+const KEYFRAME_MODES = ['image', 'ocr', 'ocr+image', 'ocr-inline', 'ocr-inline+image', 'none'];
+
+function getDefaultDedupMode() {
+  const v = localStorage.getItem('default-dedup-mode');
+  return DEDUP_MODES.includes(v) ? v : 'regular';
+}
+
+function getDefaultKeyframeMode() {
+  const v = localStorage.getItem('default-keyframe-mode');
+  return KEYFRAME_MODES.includes(v) ? v : 'image';
+}
+
+function applyProcessingDefaults() {
+  const dedup = getDefaultDedupMode();
+  const keyframe = getDefaultKeyframeMode();
+  for (const id of ['dedup-mode', 'card-dedup-mode']) {
+    const el = document.getElementById(id);
+    if (el) el.value = dedup;
+  }
+  for (const id of ['keyframe-mode', 'card-keyframe-mode']) {
+    const el = document.getElementById(id);
+    if (el) el.value = keyframe;
+  }
+}
+
 async function loadProcessingMode() {
   const select = document.getElementById('processing-mode');
   if (!select) return;
@@ -220,15 +246,15 @@ function renderVideoCard(info) {
         <div class="grid">
           <label>Dedup Mode
             <select id="card-dedup-mode">
-              <option value="regular" selected>Regular (pHash)</option>
+              <option value="regular">Regular (pHash)</option>
               <option value="slides">Slides (SSIM)</option>
               <option value="ocr">OCR (text match)</option>
               <option value="none">None</option>
             </select>
           </label>
-          <label>Keyframe Mode
+          <label>Keyframe Context Mode
             <select id="card-keyframe-mode">
-              <option value="image" selected>Image</option>
+              <option value="image">Image</option>
               <option value="ocr">OCR</option>
               <option value="ocr+image">OCR + Image</option>
               <option value="ocr-inline">OCR Inline</option>
@@ -252,6 +278,7 @@ function renderVideoCard(info) {
   `;
   resultsDiv.appendChild(article);
   fetchDefaultPrompt();
+  applyProcessingDefaults();
 }
 
 function renderVideoTable(videos, showVisibility) {
@@ -454,15 +481,15 @@ function buildResultsContainer(headerText, isChannel) {
   optionsDiv.innerHTML = `
     <label>Dedup Mode
       <select id="dedup-mode">
-        <option value="regular" selected>Regular (pHash)</option>
+        <option value="regular">Regular (pHash)</option>
         <option value="slides">Slides (SSIM)</option>
         <option value="ocr">OCR (text match)</option>
         <option value="none">None</option>
       </select>
     </label>
-    <label>Keyframe Mode
+    <label>Keyframe Context Mode
       <select id="keyframe-mode">
-        <option value="image" selected>Image</option>
+        <option value="image">Image</option>
         <option value="ocr">OCR</option>
         <option value="ocr+image">OCR + Image</option>
         <option value="ocr-inline">OCR Inline</option>
@@ -495,6 +522,7 @@ function buildResultsContainer(headerText, isChannel) {
   resultsDiv.appendChild(promptDiv);
   setTimeout(() => fetchDefaultPrompt(), 0);
   setTimeout(() => loadProcessingMode(), 0);
+  applyProcessingDefaults();
 
   // Submit button (per D-13)
   const submitBtn = document.createElement('button');
@@ -1617,6 +1645,7 @@ async function loadSettings() {
     renderCookieStatus();
     renderLlmConfig();
     renderAuthStatus();
+    renderDefaultModes();
   } catch (err) {
     showError(section, 'Could not load settings. Check that the server is running and try again.');
   } finally {
@@ -1707,6 +1736,13 @@ async function saveLlmConfig() {
 
 function resetPromptToDefault() {
   document.getElementById('llm-prompt').value = settingsState.defaultPrompt;
+}
+
+function renderDefaultModes() {
+  const dedupSel = document.getElementById('default-dedup-mode');
+  const keyframeSel = document.getElementById('default-keyframe-mode');
+  if (dedupSel) dedupSel.value = getDefaultDedupMode();
+  if (keyframeSel) keyframeSel.value = getDefaultKeyframeMode();
 }
 
 function renderAuthStatus() {
@@ -1817,6 +1853,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target.id === 'llm-save-btn') saveLlmConfig();
     if (e.target.id === 'llm-reset-btn') resetPromptToDefault();
     if (e.target.classList.contains('settings-clear-btn')) clearCookies();
+  });
+
+  // Default processing options — persist to localStorage on change
+  document.addEventListener('change', (e) => {
+    if (e.target.id === 'default-dedup-mode') {
+      localStorage.setItem('default-dedup-mode', e.target.value);
+    }
+    if (e.target.id === 'default-keyframe-mode') {
+      localStorage.setItem('default-keyframe-mode', e.target.value);
+    }
   });
 
   // Settings tab initial load on page load if hash is #settings

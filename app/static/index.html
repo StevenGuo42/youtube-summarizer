@@ -82,6 +82,31 @@
                 <button type="button" class="outline" id="cookie-paste-btn" disabled>Upload Pasted Content</button>
             </article>
 
+            <article id="defaults-card">
+                <h3>Default Processing Options</h3>
+                <p>Defaults for new Browse-tab jobs. Stored locally in your browser.</p>
+                <div class="grid">
+                    <label>Default Dedup Mode
+                        <select id="default-dedup-mode">
+                            <option value="regular">Regular (pHash)</option>
+                            <option value="slides">Slides (SSIM)</option>
+                            <option value="ocr">OCR (text match)</option>
+                            <option value="none">None</option>
+                        </select>
+                    </label>
+                    <label>Default Keyframe Context Mode
+                        <select id="default-keyframe-mode">
+                            <option value="image">Image</option>
+                            <option value="ocr">OCR</option>
+                            <option value="ocr+image">OCR + Image</option>
+                            <option value="ocr-inline">OCR Inline</option>
+                            <option value="ocr-inline+image">OCR Inline + Image</option>
+                            <option value="none">None</option>
+                        </select>
+                    </label>
+                </div>
+            </article>
+
             <article id="llm-card">
                 <h3>LLM Configuration</h3>
                 <label>Model<input type="text" id="llm-model" placeholder="claude-sonnet-4-20250514"></label>
@@ -149,7 +174,7 @@
                         <strong>OCR</strong> &mdash; Compares extracted text from keyframes. Best when on-screen text changes indicate new content.<br>
                         <strong>None</strong> &mdash; Keeps all extracted keyframes.
                     </dd>
-                    <dt>Keyframe Mode</dt>
+                    <dt>Keyframe Context Mode</dt>
                     <dd>
                         <strong>Image</strong> &mdash; Sends keyframe images to the LLM for visual context.<br>
                         <strong>OCR</strong> &mdash; Sends OCR-extracted text files instead of images.<br>
