@@ -925,26 +925,23 @@ class TestSupportedModes:
 async def test_auth_status_all_backends():
     """All three auth endpoints return a dict with expected keys (D-16/D-17)."""
     from app.services.llm.claude import ClaudeBackend
+    from app.services.llm.codex import CodexBackend
+    from app.services.llm.litellm import LiteLLMBackend
+
     claude_s = await ClaudeBackend().auth_status()
-    assert "loggedIn" in claude_s or "configured" in claude_s
+    assert "loggedIn" in claude_s
     assert "cli_error" in claude_s
     logger.info("Auth status claude=%s", claude_s)
 
-    try:
-        from app.services.llm.codex import CodexBackend
-        codex_s = await CodexBackend().auth_status()
-        assert "loggedIn" in codex_s
-        logger.info("Auth status codex=%s", codex_s)
-    except ImportError:
-        pytest.skip("CodexBackend not yet implemented (Plan 03)")
+    codex_s = await CodexBackend().auth_status()
+    assert "loggedIn" in codex_s
+    assert "cli_error" in codex_s
+    logger.info("Auth status codex=%s", codex_s)
 
-    try:
-        from app.services.llm.litellm import LiteLLMBackend
-        litellm_s = await LiteLLMBackend().auth_status()
-        assert "configured" in litellm_s
-        logger.info("Auth status litellm=%s", litellm_s)
-    except ImportError:
-        pytest.skip("LiteLLMBackend not yet implemented (Plan 04)")
+    litellm_s = await LiteLLMBackend().auth_status()
+    assert "configured" in litellm_s
+    assert "cli_error" in litellm_s
+    logger.info("Auth status litellm=%s", litellm_s)
 
 
 @pytest.mark.asyncio
