@@ -28,13 +28,17 @@ _DEFAULTS: dict[str, Any] = {
                 "output_language": None,
             },
             "litellm": {
-                "provider": "openai",
-                "model": "gpt-4o",
-                "api_key": None,
-                "api_base_url": None,
+                "active_litellm_provider": "openai",
                 "custom_prompt": None,
                 "custom_prompt_mode": "replace",
                 "output_language": None,
+                "providers": {
+                    "openai":    {"model": "gpt-4o",                   "api_key": None, "api_base_url": None},
+                    "anthropic": {"model": "claude-sonnet-4-20250514",  "api_key": None, "api_base_url": None},
+                    "gemini":    {"model": "gemini-2.5-flash",          "api_key": None, "api_base_url": None},
+                    "ollama":    {"model": "llama3",                    "api_key": None, "api_base_url": "http://localhost:11434"},
+                    "custom":    {"model": "",                          "api_key": None, "api_base_url": ""},
+                },
             },
         },
     },
@@ -95,7 +99,43 @@ def _migrate_if_needed(settings: dict) -> dict:
     if not llm:
         return settings  # Empty or absent llm block — no migration needed
     if "active_provider" in llm or "providers" in llm:
-        return settings  # Already new shape — no migration needed
+        # New shape detected — but check if litellm sub-slot needs Phase 13 → 13.1 migration
+        litellm_slot = llm.get("providers", {}).get("litellm", {})
+        if "provider" in litellm_slot and "providers" not in litellm_slot:
+            # Phase 13 flat litellm shape detected: migrate to nested sub-providers
+            logger.info("Migrating settings.json: litellm flat slot → per-provider nested shape")
+            old_provider = litellm_slot.get("provider") or "openai"
+            _ALLOWED = {"openai", "anthropic", "gemini", "ollama", "custom"}
+            if old_provider not in _ALLOWED:
+                old_provider = "openai"  # defensive: never lose stored key
+            old_key = litellm_slot.get("api_key")
+            old_model = litellm_slot.get("model")
+            old_base_url = litellm_slot.get("api_base_url")
+            # Start from defaults for all 5 sub-providers
+            default_sub = _DEFAULTS["llm"]["providers"]["litellm"]["providers"]
+            new_providers_dict = {name: dict(cfg) for name, cfg in default_sub.items()}
+            # Migrate old credentials into the matching slot (never lose stored key)
+            if old_key is not None:
+                new_providers_dict[old_provider]["api_key"] = old_key
+            if old_model:
+                new_providers_dict[old_provider]["model"] = old_model
+            if old_base_url is not None:
+                new_providers_dict[old_provider]["api_base_url"] = old_base_url
+            # Build the new litellm slot
+            new_litellm = {
+                "active_litellm_provider": old_provider,
+                "custom_prompt": litellm_slot.get("custom_prompt"),
+                "custom_prompt_mode": litellm_slot.get("custom_prompt_mode") or "replace",
+                "output_language": litellm_slot.get("output_language"),
+                "providers": new_providers_dict,
+            }
+            settings["llm"]["providers"]["litellm"] = new_litellm
+            try:
+                _write_settings(settings)
+                logger.info("LiteLLM per-provider migration complete")
+            except Exception:
+                logger.exception("Failed to write Phase-13.1 migrated settings; in-memory migrated")
+        return settings  # Already new shape (with litellm sub-migration applied if needed)
 
     # Old flat shape detected: migrate to nested
     logger.info("Migrating settings.json from flat llm.* to llm.providers.claude shape")
@@ -130,11 +170,31 @@ def _deep_merge_llm_defaults(llm: dict) -> dict:
     providers = {}
     for provider_name, default_cfg in _DEFAULTS["llm"]["providers"].items():
         stored = llm.get("providers", {}).get(provider_name, {})
-        merged = dict(default_cfg)
-        for k, v in stored.items():
-            if v is not None or k in default_cfg:
-                merged[k] = v
-        providers[provider_name] = merged
+        if provider_name == "litellm":
+            # Merge top-level litellm fields
+            merged = {k: v for k, v in default_cfg.items() if k != "providers"}
+            for k in ("active_litellm_provider", "custom_prompt", "custom_prompt_mode", "output_language"):
+                val = stored.get(k)
+                if val is not None:
+                    merged[k] = val
+            # Merge inner sub-providers
+            stored_sub = stored.get("providers", {})
+            default_sub = default_cfg["providers"]
+            merged_sub = {}
+            for sub_name, sub_defaults in default_sub.items():
+                sub_stored = stored_sub.get(sub_name, {})
+                sub_merged = dict(sub_defaults)
+                for k, v in sub_stored.items():
+                    sub_merged[k] = v  # always take stored value (even None)
+                merged_sub[sub_name] = sub_merged
+            merged["providers"] = merged_sub
+            providers[provider_name] = merged
+        else:
+            merged = dict(default_cfg)
+            for k, v in stored.items():
+                if v is not None or k in default_cfg:
+                    merged[k] = v
+            providers[provider_name] = merged
     result["providers"] = providers
     return result
 
@@ -158,13 +218,12 @@ def save_llm_settings(
     custom_prompt: str | None = None,
     custom_prompt_mode: str | None = None,
     output_language: str | None = None,
-    litellm_api_key: str | None = None,
 ) -> None:
     """Persist LLM settings.
 
     New callers pass active_provider + providers_config (nested schema).
-    If providers_config["litellm"]["api_key"] is masked (starts with "..."),
-    the stored key is preserved unchanged (no-op for masked echo saves).
+    For litellm, each sub-provider's api_key is independently guarded:
+    if the incoming api_key is masked (starts with "..."), the stored key is preserved.
     """
     settings = _read_settings()
     settings = _migrate_if_needed(settings)
@@ -180,9 +239,24 @@ def save_llm_settings(
                 existing_cfg = existing_providers.get(provider_name, {})
                 merged = dict(existing_cfg)
                 merged.update(cfg)
-                # API key no-op guard: if incoming key is masked, keep stored key
-                if provider_name == "litellm" and _is_masked(cfg.get("api_key")):
-                    merged["api_key"] = existing_cfg.get("api_key")
+                if provider_name == "litellm":
+                    # Handle nested sub-providers with per-provider key no-op
+                    incoming_sub = cfg.get("providers", {})
+                    existing_sub = existing_cfg.get("providers", {})
+                    if incoming_sub:
+                        merged_sub = dict(existing_sub)
+                        for sub_name, sub_cfg in incoming_sub.items():
+                            existing_sub_cfg = existing_sub.get(sub_name, {})
+                            sub_merged = dict(existing_sub_cfg)
+                            sub_merged.update(sub_cfg)
+                            # Per-provider key no-op: masked key does NOT overwrite stored key
+                            if _is_masked(sub_cfg.get("api_key")):
+                                sub_merged["api_key"] = existing_sub_cfg.get("api_key")
+                            merged_sub[sub_name] = sub_merged
+                        merged["providers"] = merged_sub
+                    # Remove legacy "api_key" / "provider" at top level if still present
+                    merged.pop("api_key", None)
+                    merged.pop("provider", None)
                 existing_providers[provider_name] = merged
             llm["providers"] = existing_providers
         settings["llm"] = llm
@@ -200,16 +274,6 @@ def save_llm_settings(
         if output_language is not None:
             claude_cfg["output_language"] = output_language
         providers["claude"] = claude_cfg
-        llm["providers"] = providers
-        settings["llm"] = llm
-    elif litellm_api_key is not None:
-        # Standalone api_key update (test helper / direct key save)
-        llm = settings.get("llm", {})
-        providers = llm.get("providers", {})
-        litellm_cfg = providers.get("litellm", {})
-        if not _is_masked(litellm_api_key):
-            litellm_cfg["api_key"] = litellm_api_key
-        providers["litellm"] = litellm_cfg
         llm["providers"] = providers
         settings["llm"] = llm
 

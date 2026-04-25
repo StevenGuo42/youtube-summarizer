@@ -1,7 +1,7 @@
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.services.llm import DEFAULT_PROMPT, PROMPT_PLACEHOLDER, get_auth_status
 from app.settings import (
@@ -17,6 +17,7 @@ from app.settings import (
 router = APIRouter()
 
 _ALLOWED_PROVIDERS = {"claude", "codex", "litellm"}
+_ALLOWED_LITELLM_PROVIDERS = {"openai", "anthropic", "gemini", "ollama", "custom"}
 
 
 # --- Auth endpoints ---
@@ -57,14 +58,26 @@ class CodexProviderConfig(BaseModel):
     output_language: str | None = None
 
 
-class LiteLLMProviderConfig(BaseModel):
-    provider: str = "openai"
-    model: str = "gpt-4o"
+class LiteLLMSubProviderConfig(BaseModel):
+    model: str = ""
     api_key: str | None = None
     api_base_url: str | None = None
+
+
+class LiteLLMProviderConfig(BaseModel):
+    active_litellm_provider: str = "openai"
     custom_prompt: str | None = None
     custom_prompt_mode: str = "replace"
     output_language: str | None = None
+    providers: dict[str, LiteLLMSubProviderConfig] = Field(
+        default_factory=lambda: {
+            "openai":    LiteLLMSubProviderConfig(model="gpt-4o"),
+            "anthropic": LiteLLMSubProviderConfig(model="claude-sonnet-4-20250514"),
+            "gemini":    LiteLLMSubProviderConfig(model="gemini-2.5-flash"),
+            "ollama":    LiteLLMSubProviderConfig(model="llama3", api_base_url="http://localhost:11434"),
+            "custom":    LiteLLMSubProviderConfig(model="", api_base_url=""),
+        }
+    )
 
 
 class LLMProvidersConfig(BaseModel):
@@ -90,12 +103,19 @@ async def get_llm_config() -> LLMConfigResponse:
     settings = get_llm_settings()
     providers = settings.get("providers", {})
 
-    # Mask the LiteLLM API key before returning to the client (D-15)
     response_providers: dict[str, Any] = {}
     for provider_name, cfg in providers.items():
         cfg_copy = dict(cfg)
-        if provider_name == "litellm" and "api_key" in cfg_copy:
-            cfg_copy["api_key"] = _mask_api_key(cfg_copy["api_key"])
+        if provider_name == "litellm":
+            # Mask each sub-provider's api_key independently
+            sub_providers = cfg_copy.get("providers", {})
+            masked_sub = {}
+            for sub_name, sub_cfg in sub_providers.items():
+                sub_copy = dict(sub_cfg)
+                if "api_key" in sub_copy:
+                    sub_copy["api_key"] = _mask_api_key(sub_copy["api_key"])
+                masked_sub[sub_name] = sub_copy
+            cfg_copy["providers"] = masked_sub
         response_providers[provider_name] = cfg_copy
 
     return LLMConfigResponse(
@@ -111,13 +131,15 @@ async def save_llm_config(config: LLMConfigRequest):
     if config.active_provider not in _ALLOWED_PROVIDERS:
         raise HTTPException(status_code=422, detail=f"invalid provider: {config.active_provider}")
 
-    # Convert Pydantic models to dicts for settings persistence
+    litellm_active = config.providers.litellm.active_litellm_provider
+    if litellm_active not in _ALLOWED_LITELLM_PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"invalid litellm provider: {litellm_active}")
+
     providers_config = {
         "claude": config.providers.claude.model_dump(),
         "codex": config.providers.codex.model_dump(),
         "litellm": config.providers.litellm.model_dump(),
     }
-
     save_llm_settings(
         active_provider=config.active_provider,
         providers_config=providers_config,
