@@ -1630,7 +1630,19 @@ const settingsState = {
     providers: {
       claude: { model: '', custom_prompt: null, custom_prompt_mode: 'replace', output_language: '' },
       codex: { model: 'gpt-5.4', custom_prompt: null, custom_prompt_mode: 'replace', output_language: '' },
-      litellm: { provider: 'openai', model: 'gpt-4o', api_key: '', api_base_url: '', custom_prompt: null, custom_prompt_mode: 'replace', output_language: '' },
+      litellm: {
+        active_litellm_provider: 'openai',
+        custom_prompt: null,
+        custom_prompt_mode: 'replace',
+        output_language: '',
+        providers: {
+          openai:    { model: 'gpt-4o',                    api_key: '', api_base_url: '' },
+          anthropic: { model: 'claude-sonnet-4-20250514',  api_key: '', api_base_url: '' },
+          gemini:    { model: 'gemini-2.5-flash',           api_key: '', api_base_url: '' },
+          ollama:    { model: 'llama3',                    api_key: '', api_base_url: 'http://localhost:11434' },
+          custom:    { model: '',                          api_key: '', api_base_url: '' },
+        },
+      },
     },
   },
   defaultPrompt: '',
@@ -1769,16 +1781,38 @@ function onLitellmProviderChange() {
   if (!providerSel) return;
   const provider = providerSel.value;
 
-  // Show/hide API base URL field
+  // Update active_litellm_provider in state
+  settingsState.llmConfig.providers.litellm.active_litellm_provider = provider;
+
+  // Swap displayed credentials to this sub-provider's stored values
+  const subProviders = settingsState.llmConfig.providers.litellm.providers || {};
+  const sub = subProviders[provider] || {};
+
+  const litellmModelInput = document.getElementById('litellm-model');
+  if (litellmModelInput) {
+    litellmModelInput.value = sub.model || '';
+    litellmModelInput.placeholder = _LITELLM_MODEL_PLACEHOLDER[provider] || 'model-name';
+  }
+
+  const apiKeyInput = document.getElementById('litellm-api-key');
+  if (apiKeyInput) {
+    const rawKey = sub.api_key || '';
+    apiKeyInput.value = rawKey;
+    // Reset masked state for the newly-displayed sub-provider
+    if (rawKey.startsWith('...')) {
+      apiKeyInput.dataset.masked = 'true';
+    } else {
+      delete apiKeyInput.dataset.masked;
+    }
+  }
+
+  const baseUrlInput = document.getElementById('litellm-api-base-url');
+  if (baseUrlInput) baseUrlInput.value = sub.api_base_url || '';
+
+  // Show/hide API base URL field (ollama and custom require it)
   const baseUrlRow = document.getElementById('litellm-base-url-row');
   if (baseUrlRow) {
     baseUrlRow.hidden = !(provider === 'ollama' || provider === 'custom');
-  }
-
-  // Update LiteLLM model placeholder
-  const litellmModelInput = document.getElementById('litellm-model');
-  if (litellmModelInput) {
-    litellmModelInput.placeholder = _LITELLM_MODEL_PLACEHOLDER[provider] || 'model-name';
   }
 }
 
@@ -1813,20 +1847,24 @@ function renderLlmConfig() {
     modelInput.placeholder = _BACKEND_MODEL_PLACEHOLDER[activeProvider] || '';
   }
 
-  // LiteLLM fields
+  // LiteLLM fields — use active sub-provider's stored values
   const litellmCfg = settingsState.llmConfig.providers.litellm || {};
+  const activeLitellmProvider = litellmCfg.active_litellm_provider || 'openai';
+  const subProviders = litellmCfg.providers || {};
+  const activeSub = subProviders[activeLitellmProvider] || {};
+
   const providerSel = document.getElementById('litellm-provider');
-  if (providerSel) providerSel.value = litellmCfg.provider || 'openai';
+  if (providerSel) providerSel.value = activeLitellmProvider;
 
   const litellmModel = document.getElementById('litellm-model');
   if (litellmModel) {
-    litellmModel.value = litellmCfg.model || '';
-    litellmModel.placeholder = _LITELLM_MODEL_PLACEHOLDER[litellmCfg.provider || 'openai'] || 'gpt-4o';
+    litellmModel.value = activeSub.model || '';
+    litellmModel.placeholder = _LITELLM_MODEL_PLACEHOLDER[activeLitellmProvider] || 'gpt-4o';
   }
 
   const apiKeyInput = document.getElementById('litellm-api-key');
   if (apiKeyInput) {
-    const rawKey = litellmCfg.api_key || '';
+    const rawKey = activeSub.api_key || '';
     if (rawKey.startsWith('...')) {
       apiKeyInput.value = rawKey;
       apiKeyInput.dataset.masked = 'true';
@@ -1837,12 +1875,11 @@ function renderLlmConfig() {
   }
 
   const baseUrlInput = document.getElementById('litellm-api-base-url');
-  if (baseUrlInput) baseUrlInput.value = litellmCfg.api_base_url || '';
+  if (baseUrlInput) baseUrlInput.value = activeSub.api_base_url || '';
 
   const baseUrlRow = document.getElementById('litellm-base-url-row');
   if (baseUrlRow) {
-    const p = litellmCfg.provider || 'openai';
-    baseUrlRow.hidden = !(p === 'ollama' || p === 'custom');
+    baseUrlRow.hidden = !(activeLitellmProvider === 'ollama' || activeLitellmProvider === 'custom');
   }
 
   // Shared fields (use active provider's config)
@@ -1867,16 +1904,44 @@ async function saveLlmConfig() {
   const customPromptMode = document.getElementById('llm-prompt-mode')?.value || 'replace';
   const customPrompt = document.getElementById('llm-prompt')?.value.trim() || null;
 
-  // LiteLLM specific
-  const litellmCfg = { ...settingsState.llmConfig.providers.litellm };
-  const litellmProvider = document.getElementById('litellm-provider')?.value || litellmCfg.provider;
-  const litellmModel = document.getElementById('litellm-model')?.value.trim() || litellmCfg.model;
-  const litellmBaseUrl = document.getElementById('litellm-api-base-url')?.value.trim() || null;
+  // LiteLLM specific: get currently-displayed sub-provider name and read input values
+  const litellmCfg = settingsState.llmConfig.providers.litellm || {};
+  const activeLitellmProvider = litellmCfg.active_litellm_provider || 'openai';
+  const subProviders = litellmCfg.providers || {};
 
-  // API key: if data-masked is still set (user didn't retype), omit from POST body
+  const litellmModelVal = document.getElementById('litellm-model')?.value.trim() || '';
+  const litellmBaseUrlVal = document.getElementById('litellm-api-base-url')?.value.trim() || null;
+
+  // API key: if data-masked is still set (user didn't retype), send masked value so backend's no-op guard fires
   const apiKeyInput = document.getElementById('litellm-api-key');
   const apiKeyRaw = apiKeyInput?.value || '';
-  const apiKey = apiKeyInput?.dataset.masked === 'true' ? undefined : (apiKeyRaw || null);
+  const apiKey = apiKeyRaw || null;  // send as-is; backend guards masked with _is_masked()
+
+  // Build updated sub-providers: only patch the currently-displayed slot; preserve others from state
+  const updatedSubProviders = {};
+  for (const [name, sub] of Object.entries(subProviders)) {
+    if (name === activeLitellmProvider) {
+      // Update the active sub-provider from current input values
+      updatedSubProviders[name] = {
+        ...sub,
+        model: litellmModelVal || sub.model || '',
+        api_key: apiKey,
+        api_base_url: litellmBaseUrlVal !== null ? litellmBaseUrlVal : (sub.api_base_url || null),
+      };
+    } else {
+      // Preserve other sub-providers unchanged from state
+      updatedSubProviders[name] = { ...sub };
+    }
+  }
+
+  // Shared LiteLLM fields: only update if litellm is the active backend
+  const litellmShared = {
+    active_litellm_provider: activeLitellmProvider,
+    custom_prompt: activeProvider === 'litellm' ? customPrompt : (litellmCfg.custom_prompt || null),
+    custom_prompt_mode: activeProvider === 'litellm' ? customPromptMode : (litellmCfg.custom_prompt_mode || 'replace'),
+    output_language: activeProvider === 'litellm' ? outputLanguage : (litellmCfg.output_language || null),
+    providers: updatedSubProviders,
+  };
 
   const providers = {
     claude: {
@@ -1887,15 +1952,7 @@ async function saveLlmConfig() {
       ...settingsState.llmConfig.providers.codex,
       ...(activeProvider === 'codex' ? { model, custom_prompt: customPrompt, custom_prompt_mode: customPromptMode, output_language: outputLanguage } : {}),
     },
-    litellm: {
-      provider: litellmProvider,
-      model: litellmModel,
-      api_base_url: litellmBaseUrl,
-      custom_prompt: activeProvider === 'litellm' ? customPrompt : litellmCfg.custom_prompt,
-      custom_prompt_mode: activeProvider === 'litellm' ? customPromptMode : litellmCfg.custom_prompt_mode,
-      output_language: activeProvider === 'litellm' ? outputLanguage : litellmCfg.output_language,
-      ...(apiKey !== undefined ? { api_key: apiKey } : {}),
-    },
+    litellm: litellmShared,
   };
 
   card.setAttribute('aria-busy', 'true');
@@ -1908,8 +1965,10 @@ async function saveLlmConfig() {
 
   if (result) {
     showSuccess(card, 'Settings saved.');
-    settingsState.llmConfig.providers = { ...providers };
-    // Re-fetch auth status to reflect any provider change
+    settingsState.llmConfig.providers = {
+      ...settingsState.llmConfig.providers,
+      ...providers,
+    };
     await refreshAuthStatus();
   }
 }
