@@ -1971,10 +1971,17 @@ async function saveLlmConfig() {
 
   if (result) {
     showSuccess(card, 'Settings saved.');
-    settingsState.llmConfig.providers = {
-      ...settingsState.llmConfig.providers,
-      ...providers,
-    };
+    // Re-fetch canonical state from disk so masked api_keys come back in the inputs
+    // (otherwise a typed key would stay unmasked, and a focus-cleared field would stay empty)
+    const fresh = await apiFetch('/api/settings/llm');
+    if (fresh) {
+      settingsState.llmConfig = {
+        active_provider: fresh.active_provider || 'claude',
+        providers: fresh.providers || settingsState.llmConfig.providers,
+      };
+      settingsState.defaultPrompt = fresh.default_prompt || settingsState.defaultPrompt;
+      renderLlmConfig();
+    }
     await refreshAuthStatus();
   }
 }
