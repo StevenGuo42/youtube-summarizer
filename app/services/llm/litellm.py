@@ -30,6 +30,7 @@ _PROVIDER_PREFIX = {
     "anthropic": "anthropic",
     "gemini": "gemini",
     "ollama": "ollama_chat",   # Note: ollama_chat not ollama
+    "vllm": "hosted_vllm",     # self-hosted vLLM via OpenAI-compatible endpoint
     "custom": "openai",        # OpenAI-compatible endpoint
 }
 
@@ -219,8 +220,8 @@ class LiteLLMBackend(LLMBackend):
             model_str, len(transcript.segments), len(image_kf), keyframe_mode.value,
         )
 
-        # api_base: None for openai/anthropic/gemini; required for ollama/custom
-        effective_api_base = api_base_url if provider in ("ollama", "custom") else None
+        # api_base: None for openai/anthropic/gemini; required for ollama/vllm/custom
+        effective_api_base = api_base_url if provider in ("ollama", "vllm", "custom") else None
 
         try:
             response = await litellm.acompletion(

@@ -17,7 +17,7 @@ from app.settings import (
 router = APIRouter()
 
 _ALLOWED_PROVIDERS = {"claude", "codex", "litellm"}
-_ALLOWED_LITELLM_PROVIDERS = {"openai", "anthropic", "gemini", "ollama", "custom"}
+_ALLOWED_LITELLM_PROVIDERS = {"openai", "anthropic", "gemini", "ollama", "vllm", "custom"}
 
 
 # --- Auth endpoints ---
@@ -75,6 +75,7 @@ class LiteLLMProviderConfig(BaseModel):
             "anthropic": LiteLLMSubProviderConfig(model="claude-sonnet-4-20250514"),
             "gemini":    LiteLLMSubProviderConfig(model="gemini-2.5-flash"),
             "ollama":    LiteLLMSubProviderConfig(model="llama3", api_base_url="http://localhost:11434"),
+            "vllm":      LiteLLMSubProviderConfig(model="", api_base_url="http://localhost:8000/v1"),
             "custom":    LiteLLMSubProviderConfig(model="", api_base_url=""),
         }
     )

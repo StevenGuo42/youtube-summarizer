@@ -37,6 +37,7 @@ _DEFAULTS: dict[str, Any] = {
                     "anthropic": {"model": "claude-sonnet-4-20250514",  "api_key": None, "api_base_url": None},
                     "gemini":    {"model": "gemini-2.5-flash",          "api_key": None, "api_base_url": None},
                     "ollama":    {"model": "llama3",                    "api_key": None, "api_base_url": "http://localhost:11434"},
+                    "vllm":      {"model": "",                          "api_key": None, "api_base_url": "http://localhost:8000/v1"},
                     "custom":    {"model": "",                          "api_key": None, "api_base_url": ""},
                 },
             },
@@ -105,7 +106,7 @@ def _migrate_if_needed(settings: dict) -> dict:
             # Phase 13 flat litellm shape detected: migrate to nested sub-providers
             logger.info("Migrating settings.json: litellm flat slot → per-provider nested shape")
             old_provider = litellm_slot.get("provider") or "openai"
-            _ALLOWED = {"openai", "anthropic", "gemini", "ollama", "custom"}
+            _ALLOWED = {"openai", "anthropic", "gemini", "ollama", "vllm", "custom"}
             if old_provider not in _ALLOWED:
                 old_provider = "openai"  # defensive: never lose stored key
             old_key = litellm_slot.get("api_key")

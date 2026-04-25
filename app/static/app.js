@@ -1640,6 +1640,7 @@ const settingsState = {
           anthropic: { model: 'claude-sonnet-4-20250514',  api_key: '', api_base_url: '' },
           gemini:    { model: 'gemini-2.5-flash',           api_key: '', api_base_url: '' },
           ollama:    { model: 'llama3',                    api_key: '', api_base_url: 'http://localhost:11434' },
+          vllm:      { model: '',                          api_key: '', api_base_url: 'http://localhost:8000/v1' },
           custom:    { model: '',                          api_key: '', api_base_url: '' },
         },
       },
@@ -1747,6 +1748,7 @@ const _LITELLM_MODEL_PLACEHOLDER = {
   anthropic: 'claude-sonnet-4-20250514',
   gemini: 'gemini-2.5-pro',
   ollama: 'llama3',
+  vllm: 'meta-llama/Llama-3-8B-Instruct',
   custom: 'model-name',
 };
 
@@ -1809,10 +1811,10 @@ function onLitellmProviderChange() {
   const baseUrlInput = document.getElementById('litellm-api-base-url');
   if (baseUrlInput) baseUrlInput.value = sub.api_base_url || '';
 
-  // Show/hide API base URL field (ollama and custom require it)
+  // Show/hide API base URL field (ollama, vllm, and custom require it)
   const baseUrlRow = document.getElementById('litellm-base-url-row');
   if (baseUrlRow) {
-    baseUrlRow.hidden = !(provider === 'ollama' || provider === 'custom');
+    baseUrlRow.hidden = !(provider === 'ollama' || provider === 'vllm' || provider === 'custom');
   }
 }
 
@@ -1879,7 +1881,7 @@ function renderLlmConfig() {
 
   const baseUrlRow = document.getElementById('litellm-base-url-row');
   if (baseUrlRow) {
-    baseUrlRow.hidden = !(activeLitellmProvider === 'ollama' || activeLitellmProvider === 'custom');
+    baseUrlRow.hidden = !(activeLitellmProvider === 'ollama' || activeLitellmProvider === 'vllm' || activeLitellmProvider === 'custom');
   }
 
   // Shared fields (use active provider's config)
