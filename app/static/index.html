@@ -109,13 +109,54 @@
 
             <article id="llm-card">
                 <h3>LLM Configuration</h3>
-                <label>Model<input type="text" id="llm-model" placeholder="claude-sonnet-4-20250514"></label>
-                <label>Output Language<input type="text" id="llm-language" placeholder="Leave empty to follow video language"></label>
+                <label>LLM Backend
+                    <select id="llm-backend">
+                        <option value="claude">Claude (OAuth)</option>
+                        <option value="codex">Codex / ChatGPT (OAuth)</option>
+                        <option value="litellm">LiteLLM (API Key)</option>
+                    </select>
+                </label>
+                <label>Model
+                    <input type="text" id="llm-model" placeholder="claude-sonnet-4-20250514">
+                </label>
+                <!-- LiteLLM-only fields: shown/hidden via JS hidden attribute -->
+                <div id="litellm-fields" hidden>
+                    <label>Provider
+                        <select id="litellm-provider">
+                            <option value="openai">OpenAI</option>
+                            <option value="anthropic">Anthropic</option>
+                            <option value="gemini">Google Gemini</option>
+                            <option value="ollama">Ollama (local)</option>
+                            <option value="custom">Custom (OpenAI-compatible)</option>
+                        </select>
+                    </label>
+                    <label>Model
+                        <input type="text" id="litellm-model" placeholder="gpt-4o">
+                    </label>
+                    <label>API Key
+                        <input type="password" id="litellm-api-key" placeholder="sk-...">
+                        <small class="settings-help">Stored in settings.json. Leave unchanged to keep existing key.</small>
+                    </label>
+                    <div id="litellm-base-url-row" hidden>
+                        <label>API Base URL
+                            <input type="url" id="litellm-api-base-url" placeholder="http://localhost:11434">
+                            <small class="settings-help">Required for Ollama and custom OpenAI-compatible endpoints.</small>
+                        </label>
+                    </div>
+                </div>
+                <!-- Shared fields (all backends) -->
+                <label>Output Language
+                    <input type="text" id="llm-language" placeholder="Leave empty to follow video language">
+                </label>
+                <div class="grid">
+                    <label>Custom Prompt Mode
+                        <select id="llm-prompt-mode">
+                            <option value="replace">Replace default prompt</option>
+                            <option value="insert">Insert into default prompt</option>
+                        </select>
+                    </label>
+                </div>
                 <label for="llm-prompt">Custom Prompt</label>
-                <select id="llm-prompt-mode">
-                    <option value="insert" selected>Insert into default prompt</option>
-                    <option value="replace">Replace entire default prompt</option>
-                </select>
                 <textarea id="llm-prompt" rows="10" placeholder="Leave empty to use default prompt..."></textarea>
                 <div class="settings-btn-row">
                     <button type="button" class="outline" id="llm-reset-btn">Reset to Default</button>
@@ -124,8 +165,18 @@
             </article>
 
             <article id="auth-card">
-                <h3>Claude Authentication</h3>
-                <p id="auth-status"></p>
+                <h3>Authentication</h3>
+                <dl class="auth-status-list">
+                    <dt>Claude</dt>
+                    <dd id="auth-status-claude"><span aria-busy="true"></span></dd>
+
+                    <dt>Codex</dt>
+                    <dd id="auth-status-codex"><span aria-busy="true"></span></dd>
+
+                    <dt>LiteLLM</dt>
+                    <dd id="auth-status-litellm"><span aria-busy="true"></span></dd>
+                </dl>
+                <p id="auth-help" class="settings-help" hidden></p>
             </article>
         </section>
         <section id="help" hidden>
