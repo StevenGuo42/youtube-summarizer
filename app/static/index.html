@@ -116,9 +116,12 @@
                         <option value="litellm">LiteLLM (API Key)</option>
                     </select>
                 </label>
-                <label>Model
-                    <input type="text" id="llm-model" placeholder="claude-sonnet-4-20250514">
-                </label>
+                <!-- Model field for Claude/Codex — LiteLLM has its own model field inside #litellm-fields -->
+                <div id="claude-codex-fields">
+                    <label>Model
+                        <input type="text" id="llm-model" placeholder="claude-sonnet-4-20250514">
+                    </label>
+                </div>
                 <!-- LiteLLM-only fields: shown/hidden via JS hidden attribute -->
                 <div id="litellm-fields" hidden>
                     <label>Provider

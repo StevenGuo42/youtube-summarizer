@@ -1744,9 +1744,11 @@ function onBackendChange() {
   const backend = backendSel.value;
   settingsState.llmConfig.active_provider = backend;
 
-  // Show/hide LiteLLM-specific fields
+  // Show/hide LiteLLM-specific fields and Claude/Codex generic model field
   const litellmFields = document.getElementById('litellm-fields');
   if (litellmFields) litellmFields.hidden = (backend !== 'litellm');
+  const claudeCodexFields = document.getElementById('claude-codex-fields');
+  if (claudeCodexFields) claudeCodexFields.hidden = (backend === 'litellm');
 
   // Update model placeholder
   const modelInput = document.getElementById('llm-model');
@@ -1800,6 +1802,8 @@ function renderLlmConfig() {
 
   const litellmFields = document.getElementById('litellm-fields');
   if (litellmFields) litellmFields.hidden = (settingsState.llmConfig.active_provider !== 'litellm');
+  const claudeCodexFields = document.getElementById('claude-codex-fields');
+  if (claudeCodexFields) claudeCodexFields.hidden = (settingsState.llmConfig.active_provider === 'litellm');
 
   const activeProvider = settingsState.llmConfig.active_provider;
   const cfg = settingsState.llmConfig.providers[activeProvider] || {};
