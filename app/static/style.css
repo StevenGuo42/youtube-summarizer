@@ -308,3 +308,16 @@ nav a[data-tab] {
 
 /* Global: spinner on h2 elements — inline next to text, no layout shift */
 h2[aria-busy="true"]::before { margin-left: 0.5rem; }
+
+/* Settings tab: auth status definition list (Phase 13) */
+.auth-status-list {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 0.25rem 1rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.auth-status-list dt {
+  color: #7b8495;
+  font-size: 0.875rem;
+}
