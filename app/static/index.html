@@ -141,6 +141,10 @@
                         <input type="password" id="litellm-api-key" placeholder="sk-...">
                         <small class="settings-help">Stored in settings.json. Leave unchanged to keep existing key.</small>
                     </label>
+                    <div class="settings-test-row">
+                        <button type="button" class="outline" id="litellm-test-btn">Test Connection</button>
+                        <span id="litellm-test-result" class="settings-test-result"></span>
+                    </div>
                     <div id="litellm-base-url-row" hidden>
                         <label>API Base URL
                             <input type="url" id="litellm-api-base-url" placeholder="http://localhost:11434">

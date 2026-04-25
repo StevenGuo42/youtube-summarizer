@@ -253,6 +253,11 @@ nav a[data-tab] {
 #llm-prompt { font-family: monospace; }
 .settings-status-ok { color: #2ea043; }
 .settings-status-fail { color: #b83f3b; }
+.settings-test-row { display: flex; align-items: center; gap: 0.75rem; margin: 0.5rem 0 1rem; }
+.settings-test-row button { width: auto; margin: 0; }
+.settings-test-result { font-size: 0.875rem; }
+.settings-test-result.ok { color: #2ea043; }
+.settings-test-result.fail { color: #b83f3b; }
 #cookie-paste-btn:disabled { opacity: 0.5; }
 
 /* Browse tab: fix URL input — Pico grid splits 50/50 by default */

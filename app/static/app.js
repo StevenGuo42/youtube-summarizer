@@ -1816,6 +1816,13 @@ function onLitellmProviderChange() {
   if (baseUrlRow) {
     baseUrlRow.hidden = !(provider === 'ollama' || provider === 'vllm' || provider === 'custom');
   }
+
+  // Clear stale test result from previous provider
+  const testResult = document.getElementById('litellm-test-result');
+  if (testResult) {
+    testResult.className = 'settings-test-result';
+    testResult.textContent = '';
+  }
 }
 
 // updateKeyframeModeOptions: gates keyframe dropdown based on supported modes.
@@ -1983,6 +1990,50 @@ async function saveLlmConfig() {
       renderLlmConfig();
     }
     await refreshAuthStatus();
+  }
+}
+
+async function testLitellmConnection() {
+  const btn = document.getElementById('litellm-test-btn');
+  const result = document.getElementById('litellm-test-result');
+  if (!btn || !result) return;
+
+  const provider = settingsState.llmConfig.providers.litellm?.active_litellm_provider || 'openai';
+
+  // If user typed a fresh (non-masked) key in the input, test that override instead of stored
+  const apiKeyInput = document.getElementById('litellm-api-key');
+  const inputVal = apiKeyInput?.value || '';
+  const overrideKey = (inputVal && !inputVal.startsWith('...')) ? inputVal : null;
+
+  btn.disabled = true;
+  btn.setAttribute('aria-busy', 'true');
+  result.className = 'settings-test-result';
+  result.textContent = 'Testing...';
+
+  const body = { provider };
+  if (overrideKey) body.api_key = overrideKey;
+
+  const res = await apiFetch('/api/settings/llm/test', {
+    method: 'POST',
+    body,
+    container: document.getElementById('llm-card'),
+  });
+
+  btn.disabled = false;
+  btn.removeAttribute('aria-busy');
+
+  if (!res) {
+    result.className = 'settings-test-result fail';
+    result.textContent = 'request failed';
+    return;
+  }
+
+  if (res.ok) {
+    result.className = 'settings-test-result ok';
+    result.textContent = `✓ ok (${res.latency_ms}ms)`;
+  } else {
+    result.className = 'settings-test-result fail';
+    result.textContent = `✗ ${res.error || 'failed'}`;
   }
 }
 
@@ -2174,6 +2225,9 @@ document.addEventListener('DOMContentLoaded', () => {
       delete this.dataset.masked;
     }
   });
+
+  // Test connection button
+  document.getElementById('litellm-test-btn')?.addEventListener('click', testLitellmConnection);
 
   // LLM and cookie clear buttons — event delegation
   document.addEventListener('click', (e) => {

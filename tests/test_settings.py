@@ -410,6 +410,115 @@ class TestLlmEndpointsPhase131:
         assert litellm["providers"]["anthropic"]["api_key"] is None
         logger.info("GET nested shape OK, openai key masked: %s", openai_key)
 
+    def test_test_endpoint_success(self, tmp_path, monkeypatch):
+        """POST /api/settings/llm/test returns ok=True with latency_ms when provider responds."""
+        import app.settings as settings_mod
+        from fastapi.testclient import TestClient
+        from app.main import app as fastapi_app
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(self._nested_settings_json("sk-realopenai1234")))
+        monkeypatch.setattr(settings_mod, "SETTINGS_PATH", settings_file)
+
+        # Mock litellm.acompletion to return a stub response immediately
+        async def fake_acompletion(*args, **kwargs):
+            class Stub:
+                choices = [type("M", (), {"message": type("Msg", (), {"content": "ok"})})()]
+            return Stub()
+        import litellm
+        monkeypatch.setattr(litellm, "acompletion", fake_acompletion)
+
+        client = TestClient(fastapi_app)
+        resp = client.post("/api/settings/llm/test", json={"provider": "openai"})
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["ok"] is True
+        assert data["error"] is None
+        assert isinstance(data["latency_ms"], int) and data["latency_ms"] >= 0
+        logger.info("Test endpoint success: %s", data)
+
+    def test_test_endpoint_auth_failure(self, tmp_path, monkeypatch):
+        """POST /api/settings/llm/test returns ok=False with sanitized error on auth failure."""
+        import app.settings as settings_mod
+        from fastapi.testclient import TestClient
+        from app.main import app as fastapi_app
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(self._nested_settings_json("sk-bogus")))
+        monkeypatch.setattr(settings_mod, "SETTINGS_PATH", settings_file)
+
+        import litellm
+        async def fake_acompletion(*args, **kwargs):
+            # AuthenticationError signature: (message, llm_provider, model)
+            raise litellm.AuthenticationError(
+                "Invalid API key. body: Authorization: Bearer sk-bogus",
+                llm_provider="openai",
+                model="gpt-4o",
+            )
+        monkeypatch.setattr(litellm, "acompletion", fake_acompletion)
+
+        client = TestClient(fastapi_app)
+        resp = client.post("/api/settings/llm/test", json={"provider": "openai"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is False
+        # Error must NOT echo the bearer token from the upstream message
+        assert "sk-bogus" not in (data["error"] or "")
+        assert "authentication" in data["error"].lower()
+        logger.info("Test endpoint auth-fail (sanitized): %s", data)
+
+    def test_test_endpoint_unknown_provider(self, tmp_path, monkeypatch):
+        """POST /api/settings/llm/test with unknown provider returns 400."""
+        import app.settings as settings_mod
+        from fastapi.testclient import TestClient
+        from app.main import app as fastapi_app
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(self._nested_settings_json()))
+        monkeypatch.setattr(settings_mod, "SETTINGS_PATH", settings_file)
+        client = TestClient(fastapi_app)
+        resp = client.post("/api/settings/llm/test", json={"provider": "bogus-llm"})
+        assert resp.status_code == 400
+        logger.info("Test endpoint rejected unknown provider with 400")
+
+    def test_test_endpoint_no_key_configured(self, tmp_path, monkeypatch):
+        """POST /api/settings/llm/test returns ok=False when sub-provider has no api_key configured (and no override)."""
+        import app.settings as settings_mod
+        from fastapi.testclient import TestClient
+        from app.main import app as fastapi_app
+        settings_file = tmp_path / "settings.json"
+        # anthropic has api_key=None in the helper
+        settings_file.write_text(json.dumps(self._nested_settings_json()))
+        monkeypatch.setattr(settings_mod, "SETTINGS_PATH", settings_file)
+        client = TestClient(fastapi_app)
+        resp = client.post("/api/settings/llm/test", json={"provider": "anthropic"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is False
+        assert "api key" in data["error"].lower()
+
+    def test_test_endpoint_uses_override_key(self, tmp_path, monkeypatch):
+        """POST /api/settings/llm/test uses request-body api_key override when provided."""
+        import app.settings as settings_mod
+        from fastapi.testclient import TestClient
+        from app.main import app as fastapi_app
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(self._nested_settings_json("sk-stored1234")))
+        monkeypatch.setattr(settings_mod, "SETTINGS_PATH", settings_file)
+
+        captured = {}
+        async def fake_acompletion(*args, **kwargs):
+            captured["api_key"] = kwargs.get("api_key")
+            class Stub:
+                choices = [type("M", (), {"message": type("Msg", (), {"content": "ok"})})()]
+            return Stub()
+        import litellm
+        monkeypatch.setattr(litellm, "acompletion", fake_acompletion)
+
+        client = TestClient(fastapi_app)
+        resp = client.post("/api/settings/llm/test", json={"provider": "openai", "api_key": "sk-override9999"})
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+        assert captured["api_key"] == "sk-override9999", "override key should be passed to litellm, not stored"
+        logger.info("Override key correctly passed to litellm")
+
     def test_post_rejects_invalid_active_litellm_provider(self, tmp_path, monkeypatch):
         """POST /api/settings/llm returns 400 for unknown active_litellm_provider."""
         import app.settings as settings_mod

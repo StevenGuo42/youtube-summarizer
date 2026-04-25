@@ -42,6 +42,76 @@ async def litellm_auth_status():
     return await LiteLLMBackend().auth_status()
 
 
+# --- LLM connection-test endpoint ---
+
+class LiteLLMTestRequest(BaseModel):
+    provider: str
+    api_key: str | None = None  # optional override; if absent, use stored
+
+
+class LiteLLMTestResponse(BaseModel):
+    ok: bool
+    latency_ms: int | None = None
+    error: str | None = None
+
+
+@router.post("/llm/test")
+async def test_litellm_provider(req: LiteLLMTestRequest) -> LiteLLMTestResponse:
+    """Probe a LiteLLM sub-provider with a 1-token completion to verify the key/endpoint works."""
+    import logging
+    import time
+    import litellm
+    from app.services.llm.litellm import _PROVIDER_PREFIX
+
+    logger = logging.getLogger(__name__)
+
+    if req.provider not in _ALLOWED_LITELLM_PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"unknown provider: {req.provider}")
+
+    settings = get_llm_settings()
+    sub = settings.get("providers", {}).get("litellm", {}).get("providers", {}).get(req.provider, {})
+
+    api_key = req.api_key or sub.get("api_key")
+    model = sub.get("model")
+    api_base_url = sub.get("api_base_url")
+
+    if not model:
+        return LiteLLMTestResponse(ok=False, error="no model configured")
+    if req.provider not in ("ollama", "vllm", "custom") and not api_key:
+        return LiteLLMTestResponse(ok=False, error="no API key configured")
+
+    prefix = _PROVIDER_PREFIX.get(req.provider, "openai")
+    model_str = f"{prefix}/{model}"
+    effective_api_base = api_base_url if req.provider in ("ollama", "vllm", "custom") else None
+
+    start = time.monotonic()
+    try:
+        await litellm.acompletion(
+            model=model_str,
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=1,
+            api_key=api_key,
+            api_base=effective_api_base,
+            timeout=15.0,
+        )
+        return LiteLLMTestResponse(ok=True, latency_ms=int((time.monotonic() - start) * 1000))
+    except litellm.AuthenticationError:
+        logger.exception("LiteLLM test: auth failure for %s", req.provider)
+        return LiteLLMTestResponse(ok=False, error="authentication failed (invalid API key)")
+    except litellm.APIConnectionError:
+        logger.exception("LiteLLM test: connection failure for %s", req.provider)
+        return LiteLLMTestResponse(ok=False, error="connection failed (endpoint unreachable)")
+    except litellm.NotFoundError:
+        logger.exception("LiteLLM test: model not found for %s", req.provider)
+        return LiteLLMTestResponse(ok=False, error="model not found")
+    except litellm.BadRequestError as e:
+        logger.exception("LiteLLM test: bad request for %s", req.provider)
+        return LiteLLMTestResponse(ok=False, error=f"bad request ({type(e).__name__})")
+    except Exception as e:
+        logger.exception("LiteLLM test: unexpected error for %s", req.provider)
+        return LiteLLMTestResponse(ok=False, error=f"error ({type(e).__name__})")
+
+
 # --- LLM config endpoints ---
 
 class ClaudeProviderConfig(BaseModel):
