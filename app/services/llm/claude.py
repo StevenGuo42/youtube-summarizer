@@ -79,9 +79,11 @@ class ClaudeBackend(LLMBackend):
     ) -> SummaryResult:
         """Summarize a video using Claude via the Agent SDK."""
         settings = get_llm_settings()
-        # Read from flat settings (Plan 05 will update to nested shape)
-        effective_prompt = custom_prompt or settings.get("custom_prompt")
-        effective_mode = custom_prompt_mode if custom_prompt else (settings.get("custom_prompt_mode") or "replace")
+        # Read from nested providers.claude shape (migrated by Plan 04)
+        providers = settings.get("providers", {})
+        claude_cfg = providers.get("claude", {})
+        effective_prompt = custom_prompt or claude_cfg.get("custom_prompt")
+        effective_mode = custom_prompt_mode if custom_prompt else (claude_cfg.get("custom_prompt_mode") or "replace")
         system_prompt = build_system_prompt(effective_prompt, effective_mode, output_language=output_language)
 
         parts = []
@@ -108,7 +110,7 @@ class ClaudeBackend(LLMBackend):
             KeyframeMode.IMAGE, KeyframeMode.OCR,
             KeyframeMode.OCR_IMAGE, KeyframeMode.OCR_INLINE_IMAGE,
         )
-        effective_model = model or settings.get("model") or "claude-sonnet-4-20250514"
+        effective_model = model or claude_cfg.get("model") or "claude-sonnet-4-20250514"
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
             allowed_tools=["Read"] if needs_read else [],
