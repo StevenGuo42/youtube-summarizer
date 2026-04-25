@@ -111,13 +111,15 @@ class LiteLLMBackend(LLMBackend):
         """LiteLLM auth is an API key check — no network call needed.
 
         Returns {configured: bool, cli_error: False}.
-        A key is configured if it is non-empty and not a masked value (starting with '...').
+        A key is configured if the active sub-provider's key is non-empty and not masked.
         """
         try:
             settings = get_llm_settings()
             providers = settings.get("providers", {})
             litellm_cfg = providers.get("litellm", {})
-            api_key = litellm_cfg.get("api_key")
+            active = litellm_cfg.get("active_litellm_provider", "openai")
+            sub = litellm_cfg.get("providers", {}).get(active, {})
+            api_key = sub.get("api_key")
             # Key is genuinely configured if non-empty and not masked echo
             configured = bool(api_key and not api_key.startswith("..."))
             return {"configured": configured, "cli_error": False}
@@ -143,10 +145,13 @@ class LiteLLMBackend(LLMBackend):
         providers = settings.get("providers", {})
         litellm_cfg = providers.get("litellm", {})
 
-        provider = litellm_cfg.get("provider", "openai")
-        effective_model = model or litellm_cfg.get("model") or "gpt-4o"
-        api_key = litellm_cfg.get("api_key") or None
-        api_base_url = litellm_cfg.get("api_base_url") or None
+        active = litellm_cfg.get("active_litellm_provider", "openai")
+        sub = litellm_cfg.get("providers", {}).get(active, {})
+        provider = active
+        effective_model = model or sub.get("model") or "gpt-4o"
+        api_key = sub.get("api_key") or None
+        api_base_url = sub.get("api_base_url") or None
+        # Shared fields stay at litellm_cfg level (not per sub-provider)
         effective_prompt = custom_prompt or litellm_cfg.get("custom_prompt")
         effective_mode = custom_prompt_mode if custom_prompt else (litellm_cfg.get("custom_prompt_mode") or "replace")
         effective_language = output_language or litellm_cfg.get("output_language")
