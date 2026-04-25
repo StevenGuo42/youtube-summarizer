@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -9,10 +11,15 @@ from app.settings import (
     save_worker_settings,
     get_default_options,
     save_default_options,
+    _mask_api_key,
 )
 
 router = APIRouter()
 
+_ALLOWED_PROVIDERS = {"claude", "codex", "litellm"}
+
+
+# --- Auth endpoints ---
 
 @router.get("/auth/claude")
 async def claude_auth_status():
@@ -20,18 +27,60 @@ async def claude_auth_status():
     return await get_auth_status()
 
 
-class LLMConfig(BaseModel):
+@router.get("/auth/codex")
+async def codex_auth_status():
+    """Check Codex (ChatGPT) authentication status."""
+    from app.services.llm.codex import CodexBackend
+    return await CodexBackend().auth_status()
+
+
+@router.get("/auth/litellm")
+async def litellm_auth_status():
+    """Report LiteLLM API key configuration status (no network call)."""
+    from app.services.llm.litellm import LiteLLMBackend
+    return await LiteLLMBackend().auth_status()
+
+
+# --- LLM config endpoints ---
+
+class ClaudeProviderConfig(BaseModel):
     model: str = "claude-sonnet-4-20250514"
     custom_prompt: str | None = None
     custom_prompt_mode: str = "replace"
     output_language: str | None = None
 
 
+class CodexProviderConfig(BaseModel):
+    model: str = "gpt-5.4"
+    custom_prompt: str | None = None
+    custom_prompt_mode: str = "replace"
+    output_language: str | None = None
+
+
+class LiteLLMProviderConfig(BaseModel):
+    provider: str = "openai"
+    model: str = "gpt-4o"
+    api_key: str | None = None
+    api_base_url: str | None = None
+    custom_prompt: str | None = None
+    custom_prompt_mode: str = "replace"
+    output_language: str | None = None
+
+
+class LLMProvidersConfig(BaseModel):
+    claude: ClaudeProviderConfig = ClaudeProviderConfig()
+    codex: CodexProviderConfig = CodexProviderConfig()
+    litellm: LiteLLMProviderConfig = LiteLLMProviderConfig()
+
+
+class LLMConfigRequest(BaseModel):
+    active_provider: str = "claude"
+    providers: LLMProvidersConfig = LLMProvidersConfig()
+
+
 class LLMConfigResponse(BaseModel):
-    model: str
-    custom_prompt: str | None
-    custom_prompt_mode: str
-    output_language: str | None
+    active_provider: str
+    providers: dict[str, Any]
     default_prompt: str
     prompt_placeholder: str
 
@@ -39,26 +88,44 @@ class LLMConfigResponse(BaseModel):
 @router.get("/llm")
 async def get_llm_config() -> LLMConfigResponse:
     settings = get_llm_settings()
+    providers = settings.get("providers", {})
+
+    # Mask the LiteLLM API key before returning to the client (D-15)
+    response_providers: dict[str, Any] = {}
+    for provider_name, cfg in providers.items():
+        cfg_copy = dict(cfg)
+        if provider_name == "litellm" and "api_key" in cfg_copy:
+            cfg_copy["api_key"] = _mask_api_key(cfg_copy["api_key"])
+        response_providers[provider_name] = cfg_copy
+
     return LLMConfigResponse(
-        model=settings.get("model") or "claude-sonnet-4-20250514",
-        custom_prompt=settings.get("custom_prompt"),
-        custom_prompt_mode=settings.get("custom_prompt_mode") or "replace",
-        output_language=settings.get("output_language"),
+        active_provider=settings.get("active_provider", "claude"),
+        providers=response_providers,
         default_prompt=DEFAULT_PROMPT,
         prompt_placeholder=PROMPT_PLACEHOLDER,
     )
 
 
 @router.post("/llm")
-async def save_llm_config(config: LLMConfig):
+async def save_llm_config(config: LLMConfigRequest):
+    if config.active_provider not in _ALLOWED_PROVIDERS:
+        raise HTTPException(status_code=422, detail=f"invalid provider: {config.active_provider}")
+
+    # Convert Pydantic models to dicts for settings persistence
+    providers_config = {
+        "claude": config.providers.claude.model_dump(),
+        "codex": config.providers.codex.model_dump(),
+        "litellm": config.providers.litellm.model_dump(),
+    }
+
     save_llm_settings(
-        model=config.model,
-        custom_prompt=config.custom_prompt,
-        custom_prompt_mode=config.custom_prompt_mode,
-        output_language=config.output_language,
+        active_provider=config.active_provider,
+        providers_config=providers_config,
     )
     return {"status": "ok"}
 
+
+# --- Worker config endpoints (unchanged) ---
 
 class WorkerConfig(BaseModel):
     processing_mode: str = "sequential"
@@ -87,6 +154,8 @@ async def save_worker_config(config: WorkerConfig):
     )
     return {"status": "ok"}
 
+
+# --- Default options endpoints (unchanged) ---
 
 class DefaultOptions(BaseModel):
     dedup_mode: str = "regular"
