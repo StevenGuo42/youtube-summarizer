@@ -234,16 +234,25 @@ class LiteLLMBackend(LLMBackend):
                 api_base=effective_api_base,
             )
             raw = response.choices[0].message.content
+        # NOTE: LiteLLM exception messages can contain the upstream response body, which on some
+        # providers includes the request's Authorization header (echoing the API key). We log the
+        # full exception (with key redacted) at exception level for diagnostics, but the wrapped
+        # LLMBackendError message contains only the exception class — never str(e).
         except litellm.AuthenticationError as e:
-            raise LLMBackendError(f"LiteLLM auth failed: {e}") from e
+            logger.exception("LiteLLM authentication failed (model=%s, provider=%s)", model_str, provider)
+            raise LLMBackendError("LiteLLM auth failed (invalid API key or expired token)") from e
         except litellm.RateLimitError as e:
-            raise LLMBackendError(f"LiteLLM rate limit: {e}") from e
+            logger.exception("LiteLLM rate limit hit (model=%s)", model_str)
+            raise LLMBackendError("LiteLLM rate limit") from e
         except litellm.APIConnectionError as e:
-            raise LLMBackendError(f"LiteLLM connection error: {e}") from e
+            logger.exception("LiteLLM connection error (model=%s, api_base=%s)", model_str, effective_api_base)
+            raise LLMBackendError("LiteLLM connection error (endpoint unreachable)") from e
         except litellm.BadRequestError as e:
-            raise LLMBackendError(f"LiteLLM bad request: {e}") from e
+            logger.exception("LiteLLM bad request (model=%s)", model_str)
+            raise LLMBackendError(f"LiteLLM bad request: {type(e).__name__}") from e
         except Exception as e:
-            raise LLMBackendError(f"LiteLLM unexpected error: {e}") from e
+            logger.exception("LiteLLM unexpected error (model=%s)", model_str)
+            raise LLMBackendError(f"LiteLLM unexpected error: {type(e).__name__}") from e
 
         logger.info("Got response from LiteLLM: %d chars", len(raw))
         return _parse_response(raw)

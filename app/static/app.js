@@ -1914,10 +1914,14 @@ async function saveLlmConfig() {
   const litellmModelVal = document.getElementById('litellm-model')?.value.trim() || '';
   const litellmBaseUrlVal = document.getElementById('litellm-api-base-url')?.value.trim() || null;
 
-  // API key: if data-masked is still set (user didn't retype), send masked value so backend's no-op guard fires
+  // API key: if data-masked is still set (user didn't retype), send masked value so backend's no-op guard fires.
+  // If the user opened the field (which clears the masked echo) and then clicks Save without typing,
+  // we must NOT send null — that would silently delete the stored key. Fall back to the stored value
+  // (which is the masked echo), letting the backend's _is_masked() guard preserve the real key.
   const apiKeyInput = document.getElementById('litellm-api-key');
   const apiKeyRaw = apiKeyInput?.value || '';
-  const apiKey = apiKeyRaw || null;  // send as-is; backend guards masked with _is_masked()
+  const storedSubKey = subProviders[activeLitellmProvider]?.api_key || null;
+  const apiKey = apiKeyRaw || storedSubKey;  // send as-is; backend guards masked with _is_masked()
 
   // Build updated sub-providers: only patch the currently-displayed slot; preserve others from state
   const updatedSubProviders = {};
