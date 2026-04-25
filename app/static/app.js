@@ -1625,9 +1625,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
 const settingsState = {
   cookieStatus: { exists: false, modified: null },
-  llmConfig: { model: '', custom_prompt: null, custom_prompt_mode: 'replace' },
+  llmConfig: {
+    active_provider: 'claude',
+    providers: {
+      claude: { model: '', custom_prompt: null, custom_prompt_mode: 'replace', output_language: '' },
+      codex: { model: 'gpt-5.4', custom_prompt: null, custom_prompt_mode: 'replace', output_language: '' },
+      litellm: { provider: 'openai', model: 'gpt-4o', api_key: '', api_base_url: '', custom_prompt: null, custom_prompt_mode: 'replace', output_language: '' },
+    },
+  },
   defaultPrompt: '',
-  authStatus: { loggedIn: false },
+  authStatus: { claude: {}, codex: {}, litellm: {} },
 };
 
 async function loadSettings() {
@@ -1635,15 +1642,26 @@ async function loadSettings() {
   const heading = section.querySelector('h2');
   if (heading) heading.setAttribute('aria-busy', 'true');
   try {
-    const [cookieRes, llmRes, authRes] = await Promise.all([
+    const [cookieRes, llmRes, authClaudeRes, authCodexRes, authLitellmRes] = await Promise.all([
       apiFetch('/api/auth/status'),
       apiFetch('/api/settings/llm'),
       apiFetch('/api/settings/auth/claude'),
+      apiFetch('/api/settings/auth/codex'),
+      apiFetch('/api/settings/auth/litellm'),
     ]);
     settingsState.cookieStatus = cookieRes;
-    settingsState.llmConfig = { model: llmRes.model, custom_prompt: llmRes.custom_prompt, custom_prompt_mode: llmRes.custom_prompt_mode || 'replace', output_language: llmRes.output_language || '' };
-    settingsState.defaultPrompt = llmRes.default_prompt;
-    settingsState.authStatus = authRes;
+    if (llmRes) {
+      settingsState.llmConfig = {
+        active_provider: llmRes.active_provider || 'claude',
+        providers: llmRes.providers || settingsState.llmConfig.providers,
+      };
+      settingsState.defaultPrompt = llmRes.default_prompt || '';
+    }
+    settingsState.authStatus = {
+      claude: authClaudeRes || {},
+      codex: authCodexRes || {},
+      litellm: authLitellmRes || {},
+    };
     renderCookieStatus();
     renderLlmConfig();
     renderAuthStatus();
@@ -1704,36 +1722,209 @@ async function clearCookies() {
   }
 }
 
-function renderLlmConfig() {
+// Placeholder map: backend → model placeholder text
+const _BACKEND_MODEL_PLACEHOLDER = {
+  claude: 'claude-sonnet-4-20250514',
+  codex: 'gpt-5.4',
+  litellm: '',  // driven by litellm provider dropdown
+};
+
+// LiteLLM provider → default model placeholder
+const _LITELLM_MODEL_PLACEHOLDER = {
+  openai: 'gpt-4o',
+  anthropic: 'claude-sonnet-4-20250514',
+  gemini: 'gemini-2.5-pro',
+  ollama: 'llama3',
+  custom: 'model-name',
+};
+
+function onBackendChange() {
+  const backendSel = document.getElementById('llm-backend');
+  if (!backendSel) return;
+  const backend = backendSel.value;
+  settingsState.llmConfig.active_provider = backend;
+
+  // Show/hide LiteLLM-specific fields
+  const litellmFields = document.getElementById('litellm-fields');
+  if (litellmFields) litellmFields.hidden = (backend !== 'litellm');
+
+  // Update model placeholder
   const modelInput = document.getElementById('llm-model');
-  const promptArea = document.getElementById('llm-prompt');
-  const modeSelect = document.getElementById('llm-prompt-mode');
-  if (modelInput) modelInput.value = settingsState.llmConfig.model;
-  if (promptArea) promptArea.value = settingsState.llmConfig.custom_prompt || '';
-  if (modeSelect) modeSelect.value = settingsState.llmConfig.custom_prompt_mode || 'replace';
+  if (modelInput) {
+    modelInput.placeholder = _BACKEND_MODEL_PLACEHOLDER[backend] || '';
+  }
+
+  // Render the active provider's current model value
+  const cfg = settingsState.llmConfig.providers[backend] || {};
+  if (modelInput) modelInput.value = cfg.model || '';
+
+  // Update keyframe mode options (all backends support all modes — no-op for now)
+  updateKeyframeModeOptions(null);
+}
+
+function onLitellmProviderChange() {
+  const providerSel = document.getElementById('litellm-provider');
+  if (!providerSel) return;
+  const provider = providerSel.value;
+
+  // Show/hide API base URL field
+  const baseUrlRow = document.getElementById('litellm-base-url-row');
+  if (baseUrlRow) {
+    baseUrlRow.hidden = !(provider === 'ollama' || provider === 'custom');
+  }
+
+  // Update LiteLLM model placeholder
+  const litellmModelInput = document.getElementById('litellm-model');
+  if (litellmModelInput) {
+    litellmModelInput.placeholder = _LITELLM_MODEL_PLACEHOLDER[provider] || 'model-name';
+  }
+}
+
+// updateKeyframeModeOptions: gates keyframe dropdown based on supported modes.
+// Currently all backends support all modes; this function is a no-op but provides
+// the hook for future backends that restrict modes.
+function updateKeyframeModeOptions(supportedModes) {
+  // supportedModes: null = all modes supported
+  const modeSelectors = document.querySelectorAll('select[id$="-keyframe-mode"], #keyframe-mode');
+  if (!modeSelectors.length) return;
+  modeSelectors.forEach(sel => {
+    Array.from(sel.options).forEach(opt => {
+      opt.disabled = supportedModes !== null && !supportedModes.includes(opt.value);
+    });
+  });
+}
+
+function renderLlmConfig() {
+  const backendSel = document.getElementById('llm-backend');
+  if (backendSel) backendSel.value = settingsState.llmConfig.active_provider;
+
+  const litellmFields = document.getElementById('litellm-fields');
+  if (litellmFields) litellmFields.hidden = (settingsState.llmConfig.active_provider !== 'litellm');
+
+  const activeProvider = settingsState.llmConfig.active_provider;
+  const cfg = settingsState.llmConfig.providers[activeProvider] || {};
+  const modelInput = document.getElementById('llm-model');
+  if (modelInput) {
+    modelInput.value = cfg.model || '';
+    modelInput.placeholder = _BACKEND_MODEL_PLACEHOLDER[activeProvider] || '';
+  }
+
+  // LiteLLM fields
+  const litellmCfg = settingsState.llmConfig.providers.litellm || {};
+  const providerSel = document.getElementById('litellm-provider');
+  if (providerSel) providerSel.value = litellmCfg.provider || 'openai';
+
+  const litellmModel = document.getElementById('litellm-model');
+  if (litellmModel) {
+    litellmModel.value = litellmCfg.model || '';
+    litellmModel.placeholder = _LITELLM_MODEL_PLACEHOLDER[litellmCfg.provider || 'openai'] || 'gpt-4o';
+  }
+
+  const apiKeyInput = document.getElementById('litellm-api-key');
+  if (apiKeyInput) {
+    const rawKey = litellmCfg.api_key || '';
+    if (rawKey.startsWith('...')) {
+      apiKeyInput.value = rawKey;
+      apiKeyInput.dataset.masked = 'true';
+    } else {
+      apiKeyInput.value = rawKey;
+      delete apiKeyInput.dataset.masked;
+    }
+  }
+
+  const baseUrlInput = document.getElementById('litellm-api-base-url');
+  if (baseUrlInput) baseUrlInput.value = litellmCfg.api_base_url || '';
+
+  const baseUrlRow = document.getElementById('litellm-base-url-row');
+  if (baseUrlRow) {
+    const p = litellmCfg.provider || 'openai';
+    baseUrlRow.hidden = !(p === 'ollama' || p === 'custom');
+  }
+
+  // Shared fields (use active provider's config)
   const langInput = document.getElementById('llm-language');
-  if (langInput) langInput.value = settingsState.llmConfig.output_language || '';
+  if (langInput) langInput.value = cfg.output_language || '';
+
+  const promptModeSelect = document.getElementById('llm-prompt-mode');
+  if (promptModeSelect) promptModeSelect.value = cfg.custom_prompt_mode || 'replace';
+
+  const promptArea = document.getElementById('llm-prompt');
+  if (promptArea) promptArea.value = cfg.custom_prompt || '';
 }
 
 async function saveLlmConfig() {
   const card = document.getElementById('llm-card');
-  const model = document.getElementById('llm-model').value.trim();
-  const promptVal = document.getElementById('llm-prompt').value.trim();
-  const custom_prompt = promptVal === '' ? null : promptVal;
-  const custom_prompt_mode = document.getElementById('llm-prompt-mode')?.value || 'replace';
-  const langVal = document.getElementById('llm-language').value.trim();
-  const output_language = langVal === '' ? null : langVal;
-  try {
-    await apiFetch('/api/settings/llm', {
-      method: 'POST',
-      body: { model, custom_prompt, custom_prompt_mode, output_language },
-      container: card,
-    });
-    card.removeAttribute('aria-busy');
+  const activeProvider = settingsState.llmConfig.active_provider;
+  const cfg = settingsState.llmConfig.providers[activeProvider] || {};
+
+  // Read active provider's model
+  const model = document.getElementById('llm-model')?.value.trim() || cfg.model || '';
+  const outputLanguage = document.getElementById('llm-language')?.value.trim() || null;
+  const customPromptMode = document.getElementById('llm-prompt-mode')?.value || 'replace';
+  const customPrompt = document.getElementById('llm-prompt')?.value.trim() || null;
+
+  // LiteLLM specific
+  const litellmCfg = { ...settingsState.llmConfig.providers.litellm };
+  const litellmProvider = document.getElementById('litellm-provider')?.value || litellmCfg.provider;
+  const litellmModel = document.getElementById('litellm-model')?.value.trim() || litellmCfg.model;
+  const litellmBaseUrl = document.getElementById('litellm-api-base-url')?.value.trim() || null;
+
+  // API key: if data-masked is still set (user didn't retype), omit from POST body
+  const apiKeyInput = document.getElementById('litellm-api-key');
+  const apiKeyRaw = apiKeyInput?.value || '';
+  const apiKey = apiKeyInput?.dataset.masked === 'true' ? undefined : (apiKeyRaw || null);
+
+  const providers = {
+    claude: {
+      ...settingsState.llmConfig.providers.claude,
+      ...(activeProvider === 'claude' ? { model, custom_prompt: customPrompt, custom_prompt_mode: customPromptMode, output_language: outputLanguage } : {}),
+    },
+    codex: {
+      ...settingsState.llmConfig.providers.codex,
+      ...(activeProvider === 'codex' ? { model, custom_prompt: customPrompt, custom_prompt_mode: customPromptMode, output_language: outputLanguage } : {}),
+    },
+    litellm: {
+      provider: litellmProvider,
+      model: litellmModel,
+      api_base_url: litellmBaseUrl,
+      custom_prompt: activeProvider === 'litellm' ? customPrompt : litellmCfg.custom_prompt,
+      custom_prompt_mode: activeProvider === 'litellm' ? customPromptMode : litellmCfg.custom_prompt_mode,
+      output_language: activeProvider === 'litellm' ? outputLanguage : litellmCfg.output_language,
+      ...(apiKey !== undefined ? { api_key: apiKey } : {}),
+    },
+  };
+
+  card.setAttribute('aria-busy', 'true');
+  const result = await apiFetch('/api/settings/llm', {
+    method: 'POST',
+    body: { active_provider: activeProvider, providers },
+    container: card,
+  });
+  card.removeAttribute('aria-busy');
+
+  if (result) {
     showSuccess(card, 'Settings saved.');
-  } catch (err) {
-    // apiFetch already shows error in the container
+    settingsState.llmConfig.providers = { ...providers };
+    // Re-fetch auth status to reflect any provider change
+    await refreshAuthStatus();
   }
+}
+
+async function refreshAuthStatus() {
+  const card = document.getElementById('auth-card');
+  if (card) card.setAttribute('aria-busy', 'true');
+  const [claudeRes, codexRes, litellmRes] = await Promise.all([
+    apiFetch('/api/settings/auth/claude'),
+    apiFetch('/api/settings/auth/codex'),
+    apiFetch('/api/settings/auth/litellm'),
+  ]);
+  settingsState.authStatus = {
+    claude: claudeRes || {},
+    codex: codexRes || {},
+    litellm: litellmRes || {},
+  };
+  if (card) card.removeAttribute('aria-busy');
+  renderAuthStatus();
 }
 
 function resetPromptToDefault() {
@@ -1763,28 +1954,56 @@ async function saveDefaultProcessingOptions() {
   }
 }
 
-function renderAuthStatus() {
-  const el = document.getElementById('auth-status');
+function _renderBackendAuth(elementId, status, opts) {
+  const el = document.getElementById(elementId);
   if (!el) return;
-  const card = document.getElementById('auth-card');
-  // Remove any previous instruction text
-  const prevHelp = card.querySelector('.settings-help');
-  if (prevHelp) prevHelp.remove();
-
-  if (settingsState.authStatus.loggedIn) {
-    el.innerHTML = '<span class="settings-status-ok">&#10003; Authenticated via OAuth</span>';
-  } else if (settingsState.authStatus.cli_error) {
+  if (status.loggedIn || status.configured) {
+    el.innerHTML = '<span class="settings-status-ok">&#10003; ' + (opts.okMsg || 'OK') + '</span>';
+  } else if (status.cli_error) {
     el.innerHTML = '<span class="settings-status-fail">&#10007; Could not check auth status</span>';
-    const helpP = document.createElement('p');
-    helpP.className = 'settings-help';
-    helpP.textContent = 'Ensure the Claude CLI is installed and accessible.';
-    card.appendChild(helpP);
   } else {
-    el.innerHTML = '<span class="settings-status-fail">&#10007; Not authenticated</span>';
-    const helpP = document.createElement('p');
-    helpP.className = 'settings-help';
-    helpP.innerHTML = 'Run <code>claude auth login</code> in your terminal to authenticate.';
-    card.appendChild(helpP);
+    const msg = opts.notAuthMsg || ('Not authenticated — run <code>' + (opts.helpCmd || '') + '</code>');
+    el.innerHTML = '<span class="settings-status-fail">&#10007; ' + msg + '</span>';
+  }
+}
+
+function renderAuthStatus() {
+  _renderBackendAuth('auth-status-claude', settingsState.authStatus.claude, {
+    okMsg: 'Authenticated via OAuth',
+    helpCmd: 'claude auth login',
+  });
+  // T-13-06-C: codex.method is raw CLI output — only echo if it starts with the known prefix
+  const codexMethod = settingsState.authStatus.codex.method || '';
+  _renderBackendAuth('auth-status-codex', settingsState.authStatus.codex, {
+    okMsg: codexMethod.startsWith('Logged in') ? codexMethod : 'Logged in',
+    helpCmd: 'codex login',
+  });
+  _renderBackendAuth('auth-status-litellm', settingsState.authStatus.litellm, {
+    okMsg: 'API key configured',
+    notAuthMsg: 'No API key set — enter an API key above and save',
+  });
+
+  // Show help text for the most pressing issue
+  const helpEl = document.getElementById('auth-help');
+  if (!helpEl) return;
+  const { claude, codex, litellm } = settingsState.authStatus;
+  if (claude.cli_error) {
+    helpEl.innerHTML = 'Ensure the Claude CLI is installed. Run <code>claude auth login</code> in your terminal.';
+    helpEl.hidden = false;
+  } else if (!claude.loggedIn) {
+    helpEl.innerHTML = 'Run <code>claude auth login</code> in your terminal to authenticate.';
+    helpEl.hidden = false;
+  } else if (codex.cli_error) {
+    helpEl.innerHTML = 'Ensure the codex CLI is installed. Run <code>codex login</code> in your terminal.';
+    helpEl.hidden = false;
+  } else if (!codex.loggedIn) {
+    helpEl.innerHTML = 'Run <code>codex login</code> in your terminal to authenticate.';
+    helpEl.hidden = false;
+  } else if (!litellm.configured) {
+    helpEl.innerHTML = 'Enter an API key in the LiteLLM section above and save settings.';
+    helpEl.hidden = false;
+  } else {
+    helpEl.hidden = true;
   }
 }
 
@@ -1866,10 +2085,31 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Backend selector change
+  document.getElementById('llm-backend')?.addEventListener('change', onBackendChange);
+
+  // LiteLLM provider change
+  document.getElementById('litellm-provider')?.addEventListener('change', onLitellmProviderChange);
+
+  // API key focus: clear masked value so user can type fresh key
+  document.getElementById('litellm-api-key')?.addEventListener('focus', function() {
+    if (this.dataset.masked === 'true') {
+      this.value = '';
+      delete this.dataset.masked;
+    }
+  });
+
   // LLM and cookie clear buttons — event delegation
   document.addEventListener('click', (e) => {
     if (e.target.id === 'llm-save-btn') saveLlmConfig();
-    if (e.target.id === 'llm-reset-btn') resetPromptToDefault();
+    if (e.target.id === 'llm-reset-btn') {
+      const activeProvider = settingsState.llmConfig.active_provider;
+      const defaults = { claude: 'claude-sonnet-4-20250514', codex: 'gpt-5.4', litellm: 'gpt-4o' };
+      const modelInput = document.getElementById('llm-model');
+      if (modelInput) modelInput.value = defaults[activeProvider] || '';
+      const promptArea = document.getElementById('llm-prompt');
+      if (promptArea) promptArea.value = '';
+    }
     if (e.target.classList.contains('settings-clear-btn')) clearCookies();
   });
 
