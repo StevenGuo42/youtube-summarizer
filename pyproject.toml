@@ -23,6 +23,7 @@ dependencies = [
     "uvicorn[standard]>=0.42.0",
     "yt-dlp>=2026.3.17",
     "yt-dlp-ejs>=0.8.0",
+    "litellm>=1.83.0",
 ]
 
 [dependency-groups]
