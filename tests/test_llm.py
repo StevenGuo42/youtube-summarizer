@@ -915,7 +915,6 @@ class TestSupportedModes:
         modes = CodexBackend().supported_modes()
         assert len(modes) == 6
 
-    @pytest.mark.xfail(reason="LiteLLMBackend not implemented until Plan 04")
     def test_litellm_backend_supports_all_modes(self):
         from app.services.llm.litellm import LiteLLMBackend
         modes = LiteLLMBackend().supported_modes()

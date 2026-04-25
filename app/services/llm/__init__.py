@@ -25,12 +25,14 @@ from app.services.llm.prompt import (
 )
 from app.services.llm.claude import ClaudeBackend
 from app.services.llm.codex import CodexBackend
+from app.services.llm.litellm import LiteLLMBackend
 
 logger = logging.getLogger(__name__)
 
 _BACKENDS = {
     "claude": ClaudeBackend,
     "codex": CodexBackend,
+    "litellm": LiteLLMBackend,
 }
 
 
