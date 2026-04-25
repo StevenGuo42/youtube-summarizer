@@ -910,7 +910,6 @@ class TestSupportedModes:
         assert KeyframeMode.NONE in modes
         logger.info("ClaudeBackend modes: %s", modes)
 
-    @pytest.mark.xfail(reason="CodexBackend not implemented until Plan 03")
     def test_codex_backend_supports_all_modes(self):
         from app.services.llm.codex import CodexBackend
         modes = CodexBackend().supported_modes()
@@ -952,12 +951,69 @@ async def test_auth_status_all_backends():
 @pytest.mark.asyncio
 async def test_codex_backend_summarize():
     """CodexBackend produces SummaryResult (skipped if not logged in to Codex)."""
-    try:
-        from app.services.llm.codex import CodexBackend
-    except ImportError:
-        pytest.skip("CodexBackend not yet implemented (Plan 03)")
+    from app.services.llm.codex import CodexBackend
     status = await CodexBackend().auth_status()
     if not status.get("loggedIn"):
         pytest.skip("Not logged in to Codex — run `codex login` first")
-    # Integration test body added in Plan 03
-    pytest.skip("Integration test body to be added in Plan 03")
+    # Minimal integration: one sentence transcript, no keyframes
+    from app.services.transcript import TranscriptResult, Segment
+    transcript = TranscriptResult(
+        text="This is a short test video about Python programming.",
+        segments=[Segment(start=0.0, end=5.0, text="This is a short test video about Python programming.")],
+        source="captions",
+    )
+    result = await CodexBackend().summarize(
+        transcript=transcript,
+        keyframes=[],
+        video_meta={"title": "Test Video", "channel": "Test Channel", "duration": 5},
+        keyframe_mode=KeyframeMode.NONE,
+    )
+    assert isinstance(result, SummaryResult)
+    assert result.title or result.summary  # At least one non-empty field
+    logger.info("Codex summary: title=%r tldr=%r", result.title, result.tldr)
+
+
+class TestCodexBackendUnit:
+    """CodexBackend unit tests — no live Codex invocation required."""
+
+    def test_supported_modes_all_six(self):
+        from app.services.llm.codex import CodexBackend
+        modes = CodexBackend().supported_modes()
+        assert len(modes) == 6
+        assert KeyframeMode.IMAGE in modes
+        assert KeyframeMode.NONE in modes
+
+    @pytest.mark.asyncio
+    async def test_auth_status_returns_dict(self):
+        """auth_status() returns dict with loggedIn and cli_error keys."""
+        from app.services.llm.codex import CodexBackend
+        status = await CodexBackend().auth_status()
+        assert isinstance(status, dict)
+        assert "loggedIn" in status
+        assert "cli_error" in status
+        logger.info("CodexBackend auth_status: %s", status)
+
+    def test_ensure_schema_file_creates_json(self, tmp_path, monkeypatch):
+        """_ensure_schema_file writes schema with additionalProperties: false."""
+        from app.services.llm import codex as codex_mod
+        import app.config as config_mod
+        schema_path = tmp_path / "codex_schema.json"
+        # Patch both the schema path and DATA_DIR in the codex module's namespace
+        # so tempfile.mkstemp uses the same filesystem as the target (no cross-device rename)
+        monkeypatch.setattr(codex_mod, "CODEX_SCHEMA_PATH", schema_path)
+        monkeypatch.setattr(codex_mod, "DATA_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "DATA_DIR", tmp_path)
+        result = codex_mod._ensure_schema_file()
+        assert result.exists()
+        schema = json.loads(result.read_text())
+        assert schema["additionalProperties"] is False
+        assert "title" in schema["properties"]
+        assert "tldr" in schema["properties"]
+        assert "summary" in schema["properties"]
+        logger.info("Schema: %s", schema)
+
+    def test_codex_in_list_backends(self):
+        from app.services.llm import list_backends
+        backends = list_backends()
+        assert "codex" in backends
+        logger.info("list_backends: %s", backends)
