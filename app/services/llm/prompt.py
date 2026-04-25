@@ -1,60 +1,13 @@
-import asyncio
 import json
 import logging
-import shutil
-from dataclasses import dataclass
-from enum import Enum
+import re
 from pathlib import Path
 
-from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
-
 from app.services.keyframes import KeyFrame
+from app.services.llm.base import KeyframeMode, SummaryResult
 from app.services.transcript import TranscriptResult
-from app.settings import get_llm_settings as _get_llm_settings
 
 logger = logging.getLogger(__name__)
-
-
-class KeyframeMode(str, Enum):
-    IMAGE = "image"
-    OCR = "ocr"
-    OCR_IMAGE = "ocr+image"
-    OCR_INLINE = "ocr-inline"
-    OCR_INLINE_IMAGE = "ocr-inline+image"
-    NONE = "none"
-
-
-def _get_cli_path() -> str:
-    """Get path to the bundled claude CLI binary."""
-    import claude_agent_sdk
-    cli = Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"
-    if cli.exists():
-        return str(cli)
-    # Fall back to system-installed claude
-    system_claude = shutil.which("claude")
-    if system_claude:
-        return system_claude
-    raise FileNotFoundError("Claude CLI not found")
-
-
-async def get_auth_status() -> dict:
-    """Check Claude authentication status via the bundled CLI."""
-    try:
-        cli = _get_cli_path()
-        proc = await asyncio.create_subprocess_exec(
-            cli, "auth", "status",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await proc.communicate()
-        if proc.returncode == 0:
-            result = json.loads(stdout.decode())
-            result["cli_error"] = False
-            return result
-        return {"loggedIn": False, "cli_error": False}
-    except Exception:
-        logger.exception("Failed to check auth status")
-        return {"loggedIn": False, "cli_error": True}
 
 PROMPT_PLACEHOLDER = "{{CUSTOM_INSTRUCTIONS}}"
 
@@ -105,81 +58,6 @@ def build_system_prompt(
         prompt += "\n\nYou MUST write your entire response in the same language as the transcript."
 
     return prompt
-
-
-@dataclass
-class SummaryResult:
-    raw_response: str
-    title: str
-    tldr: str
-    summary: str
-
-
-def get_llm_settings() -> dict:
-    return _get_llm_settings()
-
-
-async def summarize(
-    transcript: TranscriptResult,
-    keyframes: list[KeyFrame],
-    video_meta: dict,
-    custom_prompt: str | None = None,
-    custom_prompt_mode: str = "replace",
-    model: str | None = None,
-    keyframe_mode: KeyframeMode = KeyframeMode.IMAGE,
-    ocr_paths: list[Path | None] | None = None,
-    ocr_results: list | None = None,
-    output_language: str | None = None,
-) -> SummaryResult:
-    """Summarize a video using Claude via the Agent SDK."""
-    settings = get_llm_settings()
-    effective_prompt = custom_prompt or settings.get("custom_prompt")
-    effective_mode = custom_prompt_mode if custom_prompt else (settings.get("custom_prompt_mode") or "replace")
-    system_prompt = build_system_prompt(effective_prompt, effective_mode, output_language=output_language)
-
-    # Build the user prompt with metadata
-    parts = []
-    parts.append(f"Video: {video_meta.get('title', 'Unknown')}")
-    parts.append(f"Channel: {video_meta.get('channel', 'Unknown')}")
-    duration = video_meta.get("duration")
-    if duration:
-        parts.append(f"Duration: {_format_duration(duration)}")
-    parts.append("")
-    parts.append("=== TRANSCRIPT ===")
-
-    # Interleave keyframes into the timestamped transcript
-    parts.append(_build_interleaved_transcript(
-        transcript, keyframes, mode=keyframe_mode, ocr_paths=ocr_paths,
-        video_meta=video_meta, ocr_results=ocr_results,
-    ))
-
-    user_prompt = "\n".join(parts)
-
-    logger.info(
-        "Sending to Claude: %d segments, %d keyframes, mode=%s",
-        len(transcript.segments),
-        len(keyframes),
-        keyframe_mode.value,
-    )
-
-    # Enable Read tool only when Claude needs to read files
-    needs_read = keyframe_mode in (
-        KeyframeMode.IMAGE,
-        KeyframeMode.OCR,
-        KeyframeMode.OCR_IMAGE,
-        KeyframeMode.OCR_INLINE_IMAGE,
-    )
-
-    options = ClaudeAgentOptions(
-        system_prompt=system_prompt,
-        allowed_tools=["Read"] if needs_read else [],
-        model=model or settings.get("model") or "claude-sonnet-4-20250514",
-    )
-
-    raw_response = await _run_query(user_prompt, options)
-    logger.info("Got response: %d chars", len(raw_response))
-
-    return _parse_response(raw_response)
 
 
 def _build_interleaved_transcript(
@@ -311,6 +189,58 @@ def _build_interleaved_transcript(
     return "\n\n".join(blocks)
 
 
+def _build_codex_transcript(
+    transcript: TranscriptResult,
+    keyframes: list[KeyFrame],
+    mode: KeyframeMode = KeyframeMode.IMAGE,
+    ocr_paths: list[Path | None] | None = None,
+    video_meta: dict | None = None,
+    ocr_results: list | None = None,
+) -> tuple[str, list]:
+    """Variant of _build_interleaved_transcript for Codex.
+
+    Returns (transcript_text, sorted_kf_with_images) where:
+    - [KEYFRAME: path] markers are replaced with [KEYFRAME N] (1-based, matching -i order)
+    - sorted_kf_with_images is the ordered list of image-bearing keyframes for -i flag construction
+
+    For non-image modes, falls back to _build_interleaved_transcript output with empty list.
+    """
+    _IMAGE_MODES = (KeyframeMode.IMAGE, KeyframeMode.OCR_IMAGE, KeyframeMode.OCR_INLINE_IMAGE)
+
+    if mode not in _IMAGE_MODES:
+        return _build_interleaved_transcript(
+            transcript, keyframes, mode=mode,
+            ocr_paths=ocr_paths, video_meta=video_meta, ocr_results=ocr_results,
+        ), []
+
+    # Build the normal interleaved transcript first, then post-process markers
+    # We need the sorted keyframe order to assign indices
+    if not keyframes:
+        return _build_interleaved_transcript(
+            transcript, keyframes, mode=mode,
+            ocr_paths=ocr_paths, video_meta=video_meta, ocr_results=ocr_results,
+        ), []
+
+    sorted_kf = sorted(keyframes, key=lambda kf: kf.timestamp)
+    # Build index map: path -> 1-based index
+    path_to_index = {str(kf.image_path): i + 1 for i, kf in enumerate(sorted_kf)}
+
+    # Get the raw text using the standard builder
+    raw = _build_interleaved_transcript(
+        transcript, keyframes, mode=mode,
+        ocr_paths=ocr_paths, video_meta=video_meta, ocr_results=ocr_results,
+    )
+
+    # Replace [KEYFRAME: /abs/path/to/frame.png] with [KEYFRAME N]
+    def _replace_marker(m: re.Match) -> str:
+        path = m.group(1)
+        idx = path_to_index.get(path, "?")
+        return f"[KEYFRAME {idx}]"
+
+    result = re.sub(r"\[KEYFRAME: ([^\]]+)\]", _replace_marker, raw)
+    return result, sorted_kf
+
+
 def _merge_segments(segments: list) -> str:
     """Merge consecutive transcript segments into plain text."""
     if not segments:
@@ -318,21 +248,8 @@ def _merge_segments(segments: list) -> str:
     return " ".join(seg.text for seg in segments)
 
 
-async def _run_query(prompt: str, options: ClaudeAgentOptions) -> str:
-    """Run a query via the Agent SDK and collect the text response."""
-    text_parts = []
-    async for message in query(prompt=prompt, options=options):
-        if isinstance(message, AssistantMessage):
-            for block in message.content:
-                if isinstance(block, TextBlock):
-                    text_parts.append(block.text)
-    return "\n".join(text_parts)
-
-
 def _parse_response(raw: str) -> SummaryResult:
     """Parse the JSON response from Claude into a SummaryResult."""
-    import re
-
     # Try direct JSON parse first
     text = raw.strip()
     try:

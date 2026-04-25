@@ -799,3 +799,165 @@ async def test_dedup_modes(dedup_mode):
         logger.info("Dedup %s kept %d/%d (%.0f%%) keyframes",
                      dedup_mode, len(deduped), len(keyframes),
                      100 * len(deduped) / len(keyframes))
+
+
+# ---------------------------------------------------------------------------
+# Phase 13 Wave 0 test stubs — added for Plan 01
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineImportCompat:
+    """Verify pipeline.py and routers/settings.py imports resolve after package split (D-02)."""
+
+    def test_pipeline_imports_still_resolve(self):
+        """from app.services.llm import summarize, KeyframeMode must work post-refactor."""
+        from app.services.llm import summarize, KeyframeMode  # noqa: F401
+        assert callable(summarize)
+        assert KeyframeMode.IMAGE == "image"
+        logger.info("pipeline.py import compat: OK")
+
+    def test_settings_router_imports_still_resolve(self):
+        """routers/settings.py imports must work post-refactor."""
+        from app.services.llm import DEFAULT_PROMPT, PROMPT_PLACEHOLDER, get_auth_status  # noqa: F401
+        assert PROMPT_PLACEHOLDER in DEFAULT_PROMPT
+        assert callable(get_auth_status)
+        logger.info("routers/settings.py import compat: OK")
+
+    def test_summary_result_importable(self):
+        from app.services.llm import SummaryResult  # noqa: F401
+        assert SummaryResult is not None
+
+    def test_list_backends_returns_list(self):
+        from app.services.llm import list_backends
+        backends = list_backends()
+        assert isinstance(backends, list)
+        assert "claude" in backends
+        logger.info("list_backends: %s", backends)
+
+    def test_get_active_backend_returns_backend(self):
+        from app.services.llm import get_active_backend
+        backend = get_active_backend()
+        assert backend is not None
+        logger.info("get_active_backend: %s", type(backend).__name__)
+
+
+class TestBuildCodexTranscript:
+    """Codex transcript uses [KEYFRAME N] index markers, not [KEYFRAME: path] (D-06)."""
+
+    def _make_transcript(self):
+        return TranscriptResult(
+            text="hello world. next segment.",
+            segments=[
+                Segment(start=0.0, end=5.0, text="hello world."),
+                Segment(start=10.0, end=15.0, text="next segment."),
+            ],
+            source="captions",
+        )
+
+    def _make_keyframes(self, tmp_path):
+        kf1 = KeyFrame(timestamp=3.0, image_path=tmp_path / "frame1.png")
+        kf2 = KeyFrame(timestamp=12.0, image_path=tmp_path / "frame2.png")
+        kf1.image_path.write_bytes(b"fake png 1")
+        kf2.image_path.write_bytes(b"fake png 2")
+        return [kf1, kf2]
+
+    def test_image_mode_uses_index_markers(self, tmp_path):
+        """Codex transcript uses [KEYFRAME N] not [KEYFRAME: path]."""
+        from app.services.llm.prompt import _build_codex_transcript
+        transcript = self._make_transcript()
+        keyframes = self._make_keyframes(tmp_path)
+        result, sorted_kf = _build_codex_transcript(
+            transcript, keyframes, mode=KeyframeMode.IMAGE,
+        )
+        assert "[KEYFRAME 1]" in result
+        assert "[KEYFRAME 2]" in result
+        assert "[KEYFRAME: " not in result
+        logger.info("Codex transcript:\n%s", result)
+
+    def test_index_order_matches_sorted_timestamp(self, tmp_path):
+        """KEYFRAME index 1 corresponds to the earliest timestamp keyframe."""
+        from app.services.llm.prompt import _build_codex_transcript
+        transcript = self._make_transcript()
+        keyframes = self._make_keyframes(tmp_path)
+        result, sorted_kf = _build_codex_transcript(
+            transcript, keyframes, mode=KeyframeMode.IMAGE,
+        )
+        assert len(sorted_kf) == 2
+        assert sorted_kf[0].timestamp == 3.0  # earliest = index 1
+        assert sorted_kf[1].timestamp == 12.0  # later = index 2
+
+    def test_text_only_mode_returns_empty_list(self, tmp_path):
+        """Non-image modes return empty list for keyframe list (no -i flags needed)."""
+        from app.services.llm.prompt import _build_codex_transcript
+        transcript = self._make_transcript()
+        keyframes = self._make_keyframes(tmp_path)
+        result, sorted_kf = _build_codex_transcript(
+            transcript, keyframes, mode=KeyframeMode.OCR_INLINE,
+        )
+        assert sorted_kf == []
+        # Should fall back to regular interleaved transcript
+        assert "<transcript>" in result
+
+
+class TestSupportedModes:
+    """Each backend returns correct set[KeyframeMode] from supported_modes() (D-05)."""
+
+    def test_claude_backend_supports_all_modes(self):
+        from app.services.llm.claude import ClaudeBackend
+        modes = ClaudeBackend().supported_modes()
+        assert len(modes) == 6
+        assert KeyframeMode.IMAGE in modes
+        assert KeyframeMode.NONE in modes
+        logger.info("ClaudeBackend modes: %s", modes)
+
+    @pytest.mark.xfail(reason="CodexBackend not implemented until Plan 03")
+    def test_codex_backend_supports_all_modes(self):
+        from app.services.llm.codex import CodexBackend
+        modes = CodexBackend().supported_modes()
+        assert len(modes) == 6
+
+    @pytest.mark.xfail(reason="LiteLLMBackend not implemented until Plan 04")
+    def test_litellm_backend_supports_all_modes(self):
+        from app.services.llm.litellm import LiteLLMBackend
+        modes = LiteLLMBackend().supported_modes()
+        assert len(modes) == 6
+
+
+@pytest.mark.asyncio
+async def test_auth_status_all_backends():
+    """All three auth endpoints return a dict with expected keys (D-16/D-17)."""
+    from app.services.llm.claude import ClaudeBackend
+    claude_s = await ClaudeBackend().auth_status()
+    assert "loggedIn" in claude_s or "configured" in claude_s
+    assert "cli_error" in claude_s
+    logger.info("Auth status claude=%s", claude_s)
+
+    try:
+        from app.services.llm.codex import CodexBackend
+        codex_s = await CodexBackend().auth_status()
+        assert "loggedIn" in codex_s
+        logger.info("Auth status codex=%s", codex_s)
+    except ImportError:
+        pytest.skip("CodexBackend not yet implemented (Plan 03)")
+
+    try:
+        from app.services.llm.litellm import LiteLLMBackend
+        litellm_s = await LiteLLMBackend().auth_status()
+        assert "configured" in litellm_s
+        logger.info("Auth status litellm=%s", litellm_s)
+    except ImportError:
+        pytest.skip("LiteLLMBackend not yet implemented (Plan 04)")
+
+
+@pytest.mark.asyncio
+async def test_codex_backend_summarize():
+    """CodexBackend produces SummaryResult (skipped if not logged in to Codex)."""
+    try:
+        from app.services.llm.codex import CodexBackend
+    except ImportError:
+        pytest.skip("CodexBackend not yet implemented (Plan 03)")
+    status = await CodexBackend().auth_status()
+    if not status.get("loggedIn"):
+        pytest.skip("Not logged in to Codex — run `codex login` first")
+    # Integration test body added in Plan 03
+    pytest.skip("Integration test body to be added in Plan 03")
