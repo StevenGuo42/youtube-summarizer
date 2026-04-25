@@ -36,3 +36,8 @@ MAX_KEYFRAMES = 30
 KEYFRAME_MAX_DIMENSION = 1024
 SCENE_CHANGE_THRESHOLD = 0.3
 UNIFORM_INTERVAL_SECONDS = 60
+
+# Codex backend configuration
+CODEX_SCHEMA_PATH = DATA_DIR / "codex_output_schema.json"
+CODEX_MAX_IMAGE_FRAMES = 50   # Hard cap per call; keep latest N by timestamp
+LITELLM_MAX_IMAGE_FRAMES = 20  # Base64 payload budget; keep evenly-spaced N
