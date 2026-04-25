@@ -1017,3 +1017,171 @@ class TestCodexBackendUnit:
         backends = list_backends()
         assert "codex" in backends
         logger.info("list_backends: %s", backends)
+
+
+class TestLiteLLMBackendUnit:
+    """LiteLLMBackend unit tests — no real API calls."""
+
+    def test_supported_modes_all_six(self):
+        from app.services.llm.litellm import LiteLLMBackend
+        modes = LiteLLMBackend().supported_modes()
+        assert len(modes) == 6
+        assert KeyframeMode.IMAGE in modes
+        assert KeyframeMode.NONE in modes
+
+    @pytest.mark.asyncio
+    async def test_auth_status_returns_configured_false_when_no_key(self, tmp_path, monkeypatch):
+        """auth_status returns configured=False when no API key is set."""
+        import app.settings as settings_mod
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps({
+            "llm": {
+                "active_provider": "litellm",
+                "providers": {
+                    "claude": {"model": "claude-sonnet-4-20250514", "custom_prompt": None,
+                               "custom_prompt_mode": "replace", "output_language": None},
+                    "codex": {"model": "gpt-5.4", "custom_prompt": None,
+                              "custom_prompt_mode": "replace", "output_language": None},
+                    "litellm": {"provider": "openai", "model": "gpt-4o",
+                                "api_key": None, "api_base_url": None,
+                                "custom_prompt": None, "custom_prompt_mode": "replace",
+                                "output_language": None},
+                },
+            },
+        }))
+        monkeypatch.setattr(settings_mod, "SETTINGS_PATH", settings_file)
+        from app.services.llm.litellm import LiteLLMBackend
+        status = await LiteLLMBackend().auth_status()
+        assert isinstance(status, dict)
+        assert "configured" in status
+        assert status["configured"] is False
+        assert status["cli_error"] is False
+        logger.info("LiteLLM auth_status (no key): %s", status)
+
+    @pytest.mark.asyncio
+    async def test_auth_status_returns_configured_true_when_key_set(self, tmp_path, monkeypatch):
+        """auth_status returns configured=True when a real (unmasked) API key is stored."""
+        import app.settings as settings_mod
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps({
+            "llm": {
+                "active_provider": "litellm",
+                "providers": {
+                    "claude": {"model": "claude-sonnet-4-20250514", "custom_prompt": None,
+                               "custom_prompt_mode": "replace", "output_language": None},
+                    "codex": {"model": "gpt-5.4", "custom_prompt": None,
+                              "custom_prompt_mode": "replace", "output_language": None},
+                    "litellm": {"provider": "openai", "model": "gpt-4o",
+                                "api_key": "sk-realkeyabcdefghij", "api_base_url": None,
+                                "custom_prompt": None, "custom_prompt_mode": "replace",
+                                "output_language": None},
+                },
+            },
+        }))
+        monkeypatch.setattr(settings_mod, "SETTINGS_PATH", settings_file)
+        from app.services.llm.litellm import LiteLLMBackend
+        status = await LiteLLMBackend().auth_status()
+        assert status["configured"] is True
+        assert status["cli_error"] is False
+        logger.info("LiteLLM auth_status (key set): %s", status)
+
+    @pytest.mark.asyncio
+    async def test_auth_status_masked_key_is_not_configured(self, tmp_path, monkeypatch):
+        """A masked API key (starting with '...') is treated as not configured."""
+        import app.settings as settings_mod
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps({
+            "llm": {
+                "active_provider": "litellm",
+                "providers": {
+                    "claude": {"model": "claude-sonnet-4-20250514", "custom_prompt": None,
+                               "custom_prompt_mode": "replace", "output_language": None},
+                    "codex": {"model": "gpt-5.4", "custom_prompt": None,
+                              "custom_prompt_mode": "replace", "output_language": None},
+                    "litellm": {"provider": "openai", "model": "gpt-4o",
+                                "api_key": "...ghij", "api_base_url": None,
+                                "custom_prompt": None, "custom_prompt_mode": "replace",
+                                "output_language": None},
+                },
+            },
+        }))
+        monkeypatch.setattr(settings_mod, "SETTINGS_PATH", settings_file)
+        from app.services.llm.litellm import LiteLLMBackend
+        status = await LiteLLMBackend().auth_status()
+        # Masked value "...ghij" is NOT a real key — configured should be False
+        assert status["configured"] is False
+        logger.info("LiteLLM auth_status (masked key): %s", status)
+
+    @pytest.mark.asyncio
+    async def test_summarize_with_mocked_acompletion(self, tmp_path, monkeypatch):
+        """LiteLLMBackend.summarize() returns SummaryResult with mocked acompletion."""
+        import app.settings as settings_mod
+        import app.services.llm.litellm as litellm_mod
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps({
+            "llm": {
+                "active_provider": "litellm",
+                "providers": {
+                    "claude": {"model": "claude-sonnet-4-20250514", "custom_prompt": None,
+                               "custom_prompt_mode": "replace", "output_language": None},
+                    "codex": {"model": "gpt-5.4", "custom_prompt": None,
+                              "custom_prompt_mode": "replace", "output_language": None},
+                    "litellm": {"provider": "openai", "model": "gpt-4o",
+                                "api_key": "sk-test", "api_base_url": None,
+                                "custom_prompt": None, "custom_prompt_mode": "replace",
+                                "output_language": None},
+                },
+            },
+        }))
+        monkeypatch.setattr(settings_mod, "SETTINGS_PATH", settings_file)
+
+        # Mock litellm.acompletion to return a fake response
+        mock_response_text = json.dumps({
+            "title": "Mock LiteLLM Title",
+            "tldr": "Mock TL;DR.",
+            "summary": "# Mock Summary\n\nMock content.",
+        })
+
+        class _MockChoice:
+            class message:
+                content = mock_response_text
+
+        class _MockResponse:
+            choices = [_MockChoice()]
+
+        async def _mock_acompletion(**kwargs):
+            return _MockResponse()
+
+        monkeypatch.setattr(litellm_mod.litellm, "acompletion", _mock_acompletion)
+        monkeypatch.setattr(litellm_mod.litellm, "supports_vision", lambda model: True)
+
+        from app.services.transcript import TranscriptResult, Segment
+        transcript = TranscriptResult(
+            text="Test content.",
+            segments=[Segment(start=0.0, end=5.0, text="Test content.")],
+            source="captions",
+        )
+        result = await litellm_mod.LiteLLMBackend().summarize(
+            transcript=transcript,
+            keyframes=[],
+            video_meta={"title": "Test", "channel": "Test Channel", "duration": 5},
+            keyframe_mode=KeyframeMode.NONE,
+        )
+        assert isinstance(result, SummaryResult)
+        assert result.title == "Mock LiteLLM Title"
+        assert result.tldr == "Mock TL;DR."
+        logger.info("Mocked LiteLLM result: title=%r", result.title)
+
+    def test_litellm_in_list_backends(self):
+        from app.services.llm import list_backends
+        backends = list_backends()
+        assert "litellm" in backends
+        assert "claude" in backends
+        assert "codex" in backends
+        logger.info("list_backends: %s", backends)
+
+    def test_ollama_provider_uses_ollama_chat_prefix(self):
+        """Provider 'ollama' maps to 'ollama_chat' prefix in LiteLLM model string."""
+        from app.services.llm.litellm import _PROVIDER_PREFIX
+        assert _PROVIDER_PREFIX["ollama"] == "ollama_chat"
+        logger.info("ollama prefix confirmed: %s", _PROVIDER_PREFIX["ollama"])
