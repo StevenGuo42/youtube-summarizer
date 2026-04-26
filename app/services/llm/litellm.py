@@ -1,5 +1,6 @@
 """LiteLLM backend — multi-provider API-key-based escape hatch."""
 import base64
+import json
 import logging
 import re
 from pathlib import Path
@@ -19,6 +20,33 @@ from app.services.transcript import TranscriptResult
 from app.settings import get_llm_settings
 
 logger = logging.getLogger(__name__)
+
+
+def extract_litellm_message(exc: Exception) -> str:
+    """Pull the user-facing message out of a litellm exception, redacting any leaked secrets.
+
+    Recognized upstream shapes:
+    - Inner JSON envelope: {"error": {"message": "..."}}  (Anthropic, OpenAI)
+    - "<Provider>Exception - <message>"                   (e.g. OpenAIException - Incorrect API key...)
+    Falls back to the truncated raw exception string. Always redacts sk-... and Bearer tokens
+    before returning, since some providers echo the request's Authorization header.
+    """
+    raw = str(exc)
+    redacted = re.sub(r"sk-[A-Za-z0-9_\-]{6,}", "sk-***", raw)
+    redacted = re.sub(r"(?i)bearer\s+[A-Za-z0-9_\-\.]{6,}", "Bearer ***", redacted)
+    match = re.search(r"\{.*\}", redacted, flags=re.DOTALL)
+    if match:
+        try:
+            payload = json.loads(match.group(0))
+            msg = payload.get("error", {}).get("message")
+            if isinstance(msg, str) and msg:
+                return msg[:500]
+        except (ValueError, AttributeError):
+            pass
+    after_exception = re.search(r"Exception\s*-\s*(.+)$", redacted, flags=re.DOTALL)
+    if after_exception:
+        return after_exception.group(1).strip()[:500]
+    return redacted[:500]
 
 _ALL_MODES = set(KeyframeMode)
 _IMAGE_MODES = {KeyframeMode.IMAGE, KeyframeMode.OCR_IMAGE, KeyframeMode.OCR_INLINE_IMAGE}
@@ -235,24 +263,28 @@ class LiteLLMBackend(LLMBackend):
             )
             raw = response.choices[0].message.content
         # NOTE: LiteLLM exception messages can contain the upstream response body, which on some
-        # providers includes the request's Authorization header (echoing the API key). We log the
-        # full exception (with key redacted) at exception level for diagnostics, but the wrapped
-        # LLMBackendError message contains only the exception class — never str(e).
+        # providers includes the request's Authorization header (echoing the API key). The full
+        # exception is logged via logger.exception(); the wrapped LLMBackendError surfaces the
+        # provider's user-facing message via extract_litellm_message() (which redacts sk-... /
+        # Bearer tokens defensively before returning).
         except litellm.AuthenticationError as e:
             logger.exception("LiteLLM authentication failed (model=%s, provider=%s)", model_str, provider)
-            raise LLMBackendError("LiteLLM auth failed (invalid API key or expired token)") from e
+            raise LLMBackendError(f"LiteLLM auth failed: {extract_litellm_message(e)}") from e
         except litellm.RateLimitError as e:
             logger.exception("LiteLLM rate limit hit (model=%s)", model_str)
-            raise LLMBackendError("LiteLLM rate limit") from e
+            raise LLMBackendError(f"LiteLLM rate limit: {extract_litellm_message(e)}") from e
         except litellm.APIConnectionError as e:
             logger.exception("LiteLLM connection error (model=%s, api_base=%s)", model_str, effective_api_base)
-            raise LLMBackendError("LiteLLM connection error (endpoint unreachable)") from e
+            raise LLMBackendError(f"LiteLLM connection error: {extract_litellm_message(e)}") from e
+        except litellm.NotFoundError as e:
+            logger.exception("LiteLLM not found (model=%s)", model_str)
+            raise LLMBackendError(f"LiteLLM not found: {extract_litellm_message(e)}") from e
         except litellm.BadRequestError as e:
             logger.exception("LiteLLM bad request (model=%s)", model_str)
-            raise LLMBackendError(f"LiteLLM bad request: {type(e).__name__}") from e
+            raise LLMBackendError(f"LiteLLM bad request: {extract_litellm_message(e)}") from e
         except Exception as e:
             logger.exception("LiteLLM unexpected error (model=%s)", model_str)
-            raise LLMBackendError(f"LiteLLM unexpected error: {type(e).__name__}") from e
+            raise LLMBackendError(f"LiteLLM {type(e).__name__}: {extract_litellm_message(e)}") from e
 
         logger.info("Got response from LiteLLM: %d chars", len(raw))
         return _parse_response(raw)

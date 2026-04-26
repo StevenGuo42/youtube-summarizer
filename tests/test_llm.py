@@ -1181,3 +1181,106 @@ class TestLiteLLMBackendUnit:
         from app.services.llm.litellm import _PROVIDER_PREFIX
         assert _PROVIDER_PREFIX["ollama"] == "ollama_chat"
         logger.info("ollama prefix confirmed: %s", _PROVIDER_PREFIX["ollama"])
+
+
+class TestExtractLitellmMessage:
+    """Unit tests for extract_litellm_message — shared by router and summarize() flow."""
+
+    def test_extracts_inner_json_message(self):
+        from app.services.llm.litellm import extract_litellm_message
+        exc = Exception(
+            'AnthropicException - {"type":"error","error":'
+            '{"type":"invalid_request_error","message":"Your credit balance is too low."}}'
+        )
+        msg = extract_litellm_message(exc)
+        assert msg == "Your credit balance is too low."
+
+    def test_extracts_provider_exception_dash_message(self):
+        from app.services.llm.litellm import extract_litellm_message
+        exc = Exception(
+            "AuthenticationError: OpenAIException - Incorrect API key provided: a. "
+            "You can find your API key at https://platform.openai.com/account/api-keys."
+        )
+        msg = extract_litellm_message(exc)
+        assert msg.startswith("Incorrect API key provided:")
+        assert "platform.openai.com" in msg
+
+    def test_redacts_sk_token(self):
+        from app.services.llm.litellm import extract_litellm_message
+        exc = Exception("upstream said: sk-realsecretkey1234567890 is invalid")
+        msg = extract_litellm_message(exc)
+        assert "sk-realsecretkey1234567890" not in msg
+        assert "sk-***" in msg
+
+    def test_redacts_bearer_token(self):
+        from app.services.llm.litellm import extract_litellm_message
+        exc = Exception("Authorization: Bearer eyJabc123xyz456def789 — invalid")
+        msg = extract_litellm_message(exc)
+        assert "eyJabc123xyz456def789" not in msg
+        assert "Bearer ***" in msg
+
+    def test_truncates_long_message(self):
+        from app.services.llm.litellm import extract_litellm_message
+        exc = Exception("x" * 5000)
+        msg = extract_litellm_message(exc)
+        assert len(msg) <= 500
+
+    def test_falls_back_to_raw_when_no_pattern_matches(self):
+        from app.services.llm.litellm import extract_litellm_message
+        exc = Exception("some plain error text")
+        msg = extract_litellm_message(exc)
+        assert "some plain error text" in msg
+
+    @pytest.mark.asyncio
+    async def test_summarize_auth_error_surfaces_upstream_message(self, tmp_path, monkeypatch):
+        """summarize() raises LLMBackendError with extracted upstream message on auth failure."""
+        import app.settings as settings_mod
+        import app.services.llm.litellm as litellm_mod
+        from app.services.llm.base import LLMBackendError, KeyframeMode
+        from app.services.transcript import TranscriptResult, Segment
+
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps({
+            "llm": {
+                "active_provider": "litellm",
+                "providers": {
+                    "claude": {"model": "claude-sonnet-4-20250514", "custom_prompt": None,
+                               "custom_prompt_mode": "replace", "output_language": None},
+                    "codex": {"model": "gpt-5.4", "custom_prompt": None,
+                              "custom_prompt_mode": "replace", "output_language": None},
+                    "litellm": {
+                        "active_litellm_provider": "openai",
+                        "custom_prompt": None, "custom_prompt_mode": "replace", "output_language": None,
+                        "providers": {
+                            "openai": {"model": "gpt-4o", "api_key": "sk-bogus1234abcd", "api_base_url": None},
+                        },
+                    },
+                },
+            },
+        }))
+        monkeypatch.setattr(settings_mod, "SETTINGS_PATH", settings_file)
+
+        import litellm
+        async def fake_acompletion(*args, **kwargs):
+            raise litellm.AuthenticationError(
+                "AuthenticationError: OpenAIException - Incorrect API key provided. "
+                "Bearer sk-leakedkey9999",
+                llm_provider="openai",
+                model="gpt-4o",
+            )
+        monkeypatch.setattr(litellm, "acompletion", fake_acompletion)
+
+        transcript = TranscriptResult(
+            text="hi", segments=[Segment(start=0.0, end=1.0, text="hi")], source="captions"
+        )
+        with pytest.raises(LLMBackendError) as exc_info:
+            await litellm_mod.LiteLLMBackend().summarize(
+                transcript=transcript, keyframes=[],
+                video_meta={"title": "T", "channel": "C", "duration": 1},
+                keyframe_mode=KeyframeMode.NONE,
+            )
+        msg = str(exc_info.value)
+        assert "auth failed" in msg.lower()
+        assert "Incorrect API key" in msg
+        assert "sk-leakedkey9999" not in msg
+        logger.info("summarize() auth error wrapped: %s", msg)
