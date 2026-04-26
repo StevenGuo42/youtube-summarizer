@@ -1,6 +1,6 @@
 [project]
 name = "youtube-summarizer"
-version = "0.0.1"
+version = "0.1.0"
 description = "Self-hosted web app that summarizes YouTube videos using keyframe extraction, OCR, and transcript analysis"
 requires-python = ">=3.14"
 dependencies = [
