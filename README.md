@@ -78,10 +78,11 @@ Open `http://localhost:8000` in your browser. The web app has 5 tabs:
 - **Browse** -- Search channels, browse playlists, filter by visibility, select videos to queue
 - **Queue** -- View job progress through pipeline steps, cancel or delete jobs, batch operations
 - **Summaries** -- View completed summaries with structured output, export as markdown, delete
-- **Settings** -- Configure LLM model and custom prompts, manage cookies, adjust worker settings
+- **Settings** -- Configure LLM model and custom prompts, manage cookies, adjust worker settings, set default dedup and keyframe context modes
 - **Help** -- Quick reference for keyframe modes, dedup modes, and pipeline steps
 
-### CLI
+<details>
+<summary><strong>CLI</strong></summary>
 
 ```bash
 # Summarize a public video
@@ -115,6 +116,8 @@ uv run python cli.py "https://www.youtube.com/watch?v=VIDEO_ID" --no-keyframes -
 
 See [docs/cli.md](docs/cli.md) for all options.
 
+</details>
+
 ## Members-Only Videos
 
 Members-only videos require YouTube cookies. Export from your local browser and upload:
@@ -145,7 +148,8 @@ Cookies can also be uploaded via the Settings tab in the web UI. They expire eve
 6. **Summarize** -- Transcript grouped by keyframe timestamp ranges with XML tags, sent to Claude via Agent SDK with images and/or OCR text
 7. **Cleanup** -- Temp files removed, summary saved to SQLite
 
-## API Endpoints
+<details>
+<summary><strong>API Endpoints</strong></summary>
 
 ### Auth
 
@@ -195,8 +199,13 @@ Cookies can also be uploaded via the Settings tab in the web UI. They expire eve
 | `POST /api/settings/llm` | Save LLM configuration |
 | `GET /api/settings/worker` | Get worker settings (processing mode, batch size) |
 | `POST /api/settings/worker` | Save worker settings |
+| `GET /api/settings/defaults` | Get default dedup/keyframe modes for new jobs |
+| `POST /api/settings/defaults` | Save default dedup/keyframe modes |
 
-## Running Tests
+</details>
+
+<details>
+<summary><strong>Running Tests</strong></summary>
 
 ```bash
 uv run pytest                              # All tests
@@ -205,6 +214,8 @@ uv run pytest tests/test_pipeline.py       # Full pipeline test
 ```
 
 Members-only tests require `tests/test_config.json` (copy from `tests/test_config.example.json` and fill in your video ID).
+
+</details>
 
 ## Project Structure
 
