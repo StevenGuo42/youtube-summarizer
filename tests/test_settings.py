@@ -519,6 +519,37 @@ class TestLlmEndpointsPhase131:
         assert captured["api_key"] == "sk-override9999", "override key should be passed to litellm, not stored"
         logger.info("Override key correctly passed to litellm")
 
+    def test_test_endpoint_auth_extracts_openai_exception_message(self, tmp_path, monkeypatch):
+        """AuthenticationError surfaces the upstream `<Provider>Exception - <message>` content."""
+        import app.settings as settings_mod
+        from fastapi.testclient import TestClient
+        from app.main import app as fastapi_app
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(self._nested_settings_json("sk-realbutwrong1234")))
+        monkeypatch.setattr(settings_mod, "SETTINGS_PATH", settings_file)
+
+        import litellm
+        async def fake_acompletion(*args, **kwargs):
+            raise litellm.AuthenticationError(
+                "AuthenticationError: OpenAIException - Incorrect API key provided: a. "
+                "You can find your API key at https://platform.openai.com/account/api-keys.",
+                llm_provider="openai",
+                model="gpt-4o",
+            )
+        monkeypatch.setattr(litellm, "acompletion", fake_acompletion)
+
+        client = TestClient(fastapi_app)
+        resp = client.post("/api/settings/llm/test", json={"provider": "openai"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is False
+        # Upstream message surfaced
+        assert "Incorrect API key" in data["error"]
+        assert "platform.openai.com" in data["error"]
+        # Category prefix preserved
+        assert data["error"].lower().startswith("authentication failed:")
+        logger.info("Auth-failure upstream message surfaced: %s", data["error"])
+
     def test_test_endpoint_bad_request_extracts_inner_message(self, tmp_path, monkeypatch):
         """BadRequestError surfaces the upstream provider's user-facing message (e.g. credit balance)."""
         import app.settings as settings_mod

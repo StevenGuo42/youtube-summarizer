@@ -67,13 +67,13 @@ async def test_litellm_provider(req: LiteLLMTestRequest) -> LiteLLMTestResponse:
 
     logger = logging.getLogger(__name__)
 
-    def _extract_bad_request_message(exc: Exception) -> str:
-        """Pull the user-facing message out of a BadRequestError, redacting any leaked secrets."""
+    def _extract_provider_message(exc: Exception) -> str:
+        """Pull the user-facing message out of a litellm exception, redacting any leaked secrets."""
         raw = str(exc)
         # Redact common credential patterns defensively (sk-..., Bearer tokens).
         redacted = re.sub(r"sk-[A-Za-z0-9_\-]{6,}", "sk-***", raw)
         redacted = re.sub(r"(?i)bearer\s+[A-Za-z0-9_\-\.]{6,}", "Bearer ***", redacted)
-        # Try to extract the inner JSON {"error": {"message": "..."}} that providers commonly emit.
+        # Prefer inner JSON {"error": {"message": "..."}} that providers commonly emit.
         match = re.search(r"\{.*\}", redacted, flags=re.DOTALL)
         if match:
             try:
@@ -83,7 +83,10 @@ async def test_litellm_provider(req: LiteLLMTestRequest) -> LiteLLMTestResponse:
                     return msg[:500]
             except (ValueError, AttributeError):
                 pass
-        # Fallback: truncated raw message.
+        # Next, try the `<Provider>Exception - <message>` shape (e.g. OpenAIException - Incorrect API key...).
+        after_exception = re.search(r"Exception\s*-\s*(.+)$", redacted, flags=re.DOTALL)
+        if after_exception:
+            return after_exception.group(1).strip()[:500]
         return redacted[:500]
 
     if req.provider not in _ALLOWED_LITELLM_PROVIDERS:
@@ -116,21 +119,21 @@ async def test_litellm_provider(req: LiteLLMTestRequest) -> LiteLLMTestResponse:
             timeout=15.0,
         )
         return LiteLLMTestResponse(ok=True, latency_ms=int((time.monotonic() - start) * 1000))
-    except litellm.AuthenticationError:
+    except litellm.AuthenticationError as e:
         logger.exception("LiteLLM test: auth failure for %s", req.provider)
-        return LiteLLMTestResponse(ok=False, error="authentication failed (invalid API key)")
-    except litellm.APIConnectionError:
+        return LiteLLMTestResponse(ok=False, error=f"authentication failed: {_extract_provider_message(e)}")
+    except litellm.APIConnectionError as e:
         logger.exception("LiteLLM test: connection failure for %s", req.provider)
-        return LiteLLMTestResponse(ok=False, error="connection failed (endpoint unreachable)")
-    except litellm.NotFoundError:
+        return LiteLLMTestResponse(ok=False, error=f"connection failed: {_extract_provider_message(e)}")
+    except litellm.NotFoundError as e:
         logger.exception("LiteLLM test: model not found for %s", req.provider)
-        return LiteLLMTestResponse(ok=False, error="model not found")
+        return LiteLLMTestResponse(ok=False, error=f"not found: {_extract_provider_message(e)}")
     except litellm.BadRequestError as e:
         logger.exception("LiteLLM test: bad request for %s", req.provider)
-        return LiteLLMTestResponse(ok=False, error=_extract_bad_request_message(e))
+        return LiteLLMTestResponse(ok=False, error=_extract_provider_message(e))
     except Exception as e:
         logger.exception("LiteLLM test: unexpected error for %s", req.provider)
-        return LiteLLMTestResponse(ok=False, error=f"error ({type(e).__name__})")
+        return LiteLLMTestResponse(ok=False, error=f"{type(e).__name__}: {_extract_provider_message(e)}")
 
 
 # --- LLM config endpoints ---
