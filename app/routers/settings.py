@@ -58,12 +58,33 @@ class LiteLLMTestResponse(BaseModel):
 @router.post("/llm/test")
 async def test_litellm_provider(req: LiteLLMTestRequest) -> LiteLLMTestResponse:
     """Probe a LiteLLM sub-provider with a 1-token completion to verify the key/endpoint works."""
+    import json
     import logging
+    import re
     import time
     import litellm
     from app.services.llm.litellm import _PROVIDER_PREFIX
 
     logger = logging.getLogger(__name__)
+
+    def _extract_bad_request_message(exc: Exception) -> str:
+        """Pull the user-facing message out of a BadRequestError, redacting any leaked secrets."""
+        raw = str(exc)
+        # Redact common credential patterns defensively (sk-..., Bearer tokens).
+        redacted = re.sub(r"sk-[A-Za-z0-9_\-]{6,}", "sk-***", raw)
+        redacted = re.sub(r"(?i)bearer\s+[A-Za-z0-9_\-\.]{6,}", "Bearer ***", redacted)
+        # Try to extract the inner JSON {"error": {"message": "..."}} that providers commonly emit.
+        match = re.search(r"\{.*\}", redacted, flags=re.DOTALL)
+        if match:
+            try:
+                payload = json.loads(match.group(0))
+                msg = payload.get("error", {}).get("message")
+                if isinstance(msg, str) and msg:
+                    return msg[:500]
+            except (ValueError, AttributeError):
+                pass
+        # Fallback: truncated raw message.
+        return redacted[:500]
 
     if req.provider not in _ALLOWED_LITELLM_PROVIDERS:
         raise HTTPException(status_code=400, detail=f"unknown provider: {req.provider}")
@@ -106,7 +127,7 @@ async def test_litellm_provider(req: LiteLLMTestRequest) -> LiteLLMTestResponse:
         return LiteLLMTestResponse(ok=False, error="model not found")
     except litellm.BadRequestError as e:
         logger.exception("LiteLLM test: bad request for %s", req.provider)
-        return LiteLLMTestResponse(ok=False, error=f"bad request ({type(e).__name__})")
+        return LiteLLMTestResponse(ok=False, error=_extract_bad_request_message(e))
     except Exception as e:
         logger.exception("LiteLLM test: unexpected error for %s", req.provider)
         return LiteLLMTestResponse(ok=False, error=f"error ({type(e).__name__})")

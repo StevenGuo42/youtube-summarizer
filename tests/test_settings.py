@@ -519,6 +519,42 @@ class TestLlmEndpointsPhase131:
         assert captured["api_key"] == "sk-override9999", "override key should be passed to litellm, not stored"
         logger.info("Override key correctly passed to litellm")
 
+    def test_test_endpoint_bad_request_extracts_inner_message(self, tmp_path, monkeypatch):
+        """BadRequestError surfaces the upstream provider's user-facing message (e.g. credit balance)."""
+        import app.settings as settings_mod
+        from fastapi.testclient import TestClient
+        from app.main import app as fastapi_app
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(self._nested_settings_json("sk-real1234abcd")))
+        monkeypatch.setattr(settings_mod, "SETTINGS_PATH", settings_file)
+
+        import litellm
+        async def fake_acompletion(*args, **kwargs):
+            raise litellm.BadRequestError(
+                'litellm.BadRequestError: AnthropicException - {"type":"error","error":'
+                '{"type":"invalid_request_error","message":"Your credit balance is too low. '
+                'Authorization: Bearer sk-leakedkey1234"}}',
+                model="claude-haiku-4-5",
+                llm_provider="anthropic",
+            )
+        monkeypatch.setattr(litellm, "acompletion", fake_acompletion)
+
+        client = TestClient(fastapi_app)
+        resp = client.post("/api/settings/llm/test", json={"provider": "openai"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is False
+        # Inner message extracted
+        assert "credit balance" in data["error"].lower()
+        # Bearer token / sk-... redacted defensively
+        assert "sk-leakedkey1234" not in data["error"]
+        assert "leakedkey" not in data["error"]
+        # Redaction placeholder is fine; original token must not survive
+        import re
+        assert not re.search(r"sk-[A-Za-z0-9_\-]{6,}", data["error"]), \
+            f"unredacted sk-... found: {data['error']!r}"
+        logger.info("BadRequestError surfaced inner message (sanitized): %s", data["error"])
+
     def test_post_rejects_invalid_active_litellm_provider(self, tmp_path, monkeypatch):
         """POST /api/settings/llm returns 400 for unknown active_litellm_provider."""
         import app.settings as settings_mod
