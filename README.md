@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/img/logo.png" alt="YouTube Video Summarizer" width="600">
+</p>
+
 # YouTube Video Summarizer ![Badge](https://hitscounter.dev/api/hit?url=https%3A%2F%2Fgithub.com%2FStevenGuo42%2Fyoutube-summarizer&label=Visitors&icon=github&color=%23198754&message=&style=flat&tz=UTC)
 
 
