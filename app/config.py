@@ -1,19 +1,18 @@
+import ctypes
 import os
 import site
 from pathlib import Path
 
-# Ensure nvidia-cublas-cu12 libs are on LD_LIBRARY_PATH (CTranslate2 needs libcublas.so.12)
+# bitsandbytes JIT (libnvJitLink.so.13) needs cu13 NVRTC builtins. LD_LIBRARY_PATH
+# can't help — the dynamic linker caches its search path at process startup, so
+# in-process os.environ tweaks come too late. Force-load cu13 libs into RTLD_GLOBAL
+# instead so libnvJitLink finds them when JIT triggers.
 for _site_dir in site.getsitepackages():
-    _cublas_lib = Path(_site_dir) / "nvidia" / "cublas" / "lib"
-    if _cublas_lib.is_dir() and str(_cublas_lib) not in os.environ.get("LD_LIBRARY_PATH", ""):
-        os.environ["LD_LIBRARY_PATH"] = f"{_cublas_lib}:{os.environ.get('LD_LIBRARY_PATH', '')}"
-        break
-
-# nvidia/cu13/lib needed by bitsandbytes JIT compile (libnvrtc-builtins.so.13.0, libnvJitLink.so.13)
-for _site_dir in site.getsitepackages():
-    _cu13_lib = Path(_site_dir) / "nvidia" / "cu13" / "lib"
-    if _cu13_lib.is_dir() and str(_cu13_lib) not in os.environ.get("LD_LIBRARY_PATH", ""):
-        os.environ["LD_LIBRARY_PATH"] = f"{_cu13_lib}:{os.environ.get('LD_LIBRARY_PATH', '')}"
+    _cu13 = Path(_site_dir) / "nvidia" / "cu13" / "lib"
+    _builtins = _cu13 / "libnvrtc-builtins.so.13.0"
+    if _builtins.exists():
+        ctypes.CDLL(str(_builtins), mode=ctypes.RTLD_GLOBAL)
+        ctypes.CDLL(str(_cu13 / "libnvrtc.so.13"), mode=ctypes.RTLD_GLOBAL)
         break
 
 # Ensure nvm-managed Node.js is on PATH (needed by yt-dlp EJS challenge solver)
