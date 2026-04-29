@@ -8,7 +8,7 @@ from pathlib import Path
 
 from app.config import MAX_REUSABLE_FAILED_JOBS, TMP_DIR
 from app.database import get_db
-from app.queue.worker import is_cancelled
+from app.cancel import is_cancelled
 from app.services.keyframes import KeyFrame, extract_keyframes, deduplicate_keyframes
 from app.services.llm import summarize, KeyframeMode
 from app.settings import get_llm_settings
@@ -298,7 +298,7 @@ async def process_job(job_id: str) -> None:
                 manifest["completed"].pop("download", None)
         if "download" not in manifest["completed"]:
             try:
-                video_path = await download_video(video_id, work_dir)
+                video_path = await download_video(video_id, work_dir, job_id=job_id)
                 logger.info("[%s] Downloaded: %s", job_id, video_path)
                 manifest["completed"]["download"] = {"video_path": video_path.name if video_path else None}
                 _save_manifest(work_dir, manifest)
@@ -331,7 +331,7 @@ async def process_job(job_id: str) -> None:
                 manifest["completed"].pop("transcript", None)
         if "transcript" not in manifest["completed"]:
             try:
-                transcript = await extract_transcript(video_id, video_path, work_dir)
+                transcript = await extract_transcript(video_id, video_path, work_dir, job_id=job_id)
                 logger.info("[%s] Transcript: %s, %d segments", job_id, transcript.source, len(transcript.segments))
                 if transcript.language:
                     await _update_job(job_id, language=transcript.language)
@@ -366,7 +366,7 @@ async def process_job(job_id: str) -> None:
         if "keyframes" not in manifest["completed"]:
             if video_path and video_path.exists():
                 try:
-                    keyframes = await extract_keyframes(video_path, work_dir)
+                    keyframes = await extract_keyframes(video_path, work_dir, job_id=job_id)
                     logger.info("[%s] Keyframes: %d extracted", job_id, len(keyframes))
                     rel = _save_step_keyframes(work_dir, keyframes, "keyframes.json")
                     manifest["completed"]["keyframes"] = {"keyframes_path": rel}
@@ -433,7 +433,7 @@ async def process_job(job_id: str) -> None:
                     def _ocr_progress(done: int, total: int) -> None:
                         asyncio.run_coroutine_threadsafe(_update_job(job_id, step_progress=done), loop)
 
-                    ocr_results = await extract_text(keyframes, on_progress=_ocr_progress)
+                    ocr_results = await extract_text(keyframes, on_progress=_ocr_progress, job_id=job_id)
                     ocr_paths = save_ocr_results(ocr_results, work_dir)
                     logger.info("[%s] OCR: %d results", job_id, len(ocr_results))
                     rel = _save_step_ocr(work_dir, ocr_results, "ocr_results.json")
@@ -528,7 +528,7 @@ async def process_job(job_id: str) -> None:
                         def _ocr_progress(done: int, total: int) -> None:
                             asyncio.run_coroutine_threadsafe(_update_job(job_id, step_progress=done), loop)
 
-                        ocr_results = await extract_text(keyframes, on_progress=_ocr_progress)
+                        ocr_results = await extract_text(keyframes, on_progress=_ocr_progress, job_id=job_id)
                         ocr_paths = save_ocr_results(ocr_results, work_dir)
                         logger.info("[%s] OCR: %d results", job_id, len(ocr_results))
                         rel = _save_step_ocr(work_dir, ocr_results, "ocr_results.json")
@@ -714,7 +714,7 @@ async def process_batch(job_ids: list[str]) -> None:
                 bj.manifest["completed"].pop("download", None)
         if "download" not in bj.manifest["completed"]:
             try:
-                bj.video_path = await download_video(bj.video_id, bj.work_dir)
+                bj.video_path = await download_video(bj.video_id, bj.work_dir, job_id=bj.job_id)
                 logger.info("[%s] Downloaded: %s", bj.job_id, bj.video_path)
                 bj.manifest["completed"]["download"] = {"video_path": bj.video_path.name if bj.video_path else None}
                 _save_manifest(bj.work_dir, bj.manifest)
@@ -749,7 +749,7 @@ async def process_batch(job_ids: list[str]) -> None:
                 bj.manifest["completed"].pop("transcript", None)
         if "transcript" not in bj.manifest["completed"]:
             try:
-                bj.transcript = await extract_transcript(bj.video_id, bj.video_path, bj.work_dir)
+                bj.transcript = await extract_transcript(bj.video_id, bj.video_path, bj.work_dir, job_id=bj.job_id)
                 logger.info("[%s] Transcript: %s, %d segments", bj.job_id, bj.transcript.source, len(bj.transcript.segments))
                 if bj.transcript.language:
                     await _update_job(bj.job_id, language=bj.transcript.language)
@@ -786,7 +786,7 @@ async def process_batch(job_ids: list[str]) -> None:
         if "keyframes" not in bj.manifest["completed"]:
             if bj.video_path and bj.video_path.exists():
                 try:
-                    bj.keyframes = await extract_keyframes(bj.video_path, bj.work_dir)
+                    bj.keyframes = await extract_keyframes(bj.video_path, bj.work_dir, job_id=bj.job_id)
                     logger.info("[%s] Keyframes: %d extracted", bj.job_id, len(bj.keyframes))
                     rel = _save_step_keyframes(bj.work_dir, bj.keyframes, "keyframes.json")
                     bj.manifest["completed"]["keyframes"] = {"keyframes_path": rel}
@@ -843,7 +843,7 @@ async def process_batch(job_ids: list[str]) -> None:
                     def _ocr_progress(done: int, total: int, _jid=bj.job_id) -> None:
                         asyncio.run_coroutine_threadsafe(_update_job(_jid, step_progress=done), loop)
 
-                    bj.ocr_results = await extract_text(bj.keyframes, on_progress=_ocr_progress)
+                    bj.ocr_results = await extract_text(bj.keyframes, on_progress=_ocr_progress, job_id=bj.job_id)
                     bj.ocr_paths = save_ocr_results(bj.ocr_results, bj.work_dir)
                     rel = _save_step_ocr(bj.work_dir, bj.ocr_results, "ocr_results.json")
                     bj.manifest["completed"]["ocr"] = {"ocr_results_path": rel}
@@ -942,7 +942,7 @@ async def process_batch(job_ids: list[str]) -> None:
                     def _ocr_progress(done: int, total: int, _jid=bj.job_id) -> None:
                         asyncio.run_coroutine_threadsafe(_update_job(_jid, step_progress=done), loop)
 
-                    bj.ocr_results = await extract_text(bj.keyframes, on_progress=_ocr_progress)
+                    bj.ocr_results = await extract_text(bj.keyframes, on_progress=_ocr_progress, job_id=bj.job_id)
                     bj.ocr_paths = save_ocr_results(bj.ocr_results, bj.work_dir)
                     rel = _save_step_ocr(bj.work_dir, bj.ocr_results, "ocr_results.json")
                     bj.manifest["completed"]["ocr"] = {"ocr_results_path": rel}

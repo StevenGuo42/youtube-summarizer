@@ -7,6 +7,7 @@ from pathlib import Path
 
 import torch
 
+from app.cancel import is_cancelled, register_subprocess, unregister_subprocess
 from app.config import COOKIES_PATH, WHISPER_MODEL_DIR
 from app.services.ytdlp import _base_opts
 from app.shutdown import is_shutting_down
@@ -31,7 +32,7 @@ class TranscriptResult:
 
 async def extract_transcript(
     video_id: str, video_path: Path | None, work_dir: Path,
-    whisper_model=None,
+    whisper_model=None, job_id: str | None = None,
 ) -> TranscriptResult:
     """Extract transcript: try YouTube captions first, fall back to faster-whisper."""
     result = await _try_captions(video_id, work_dir)
@@ -41,7 +42,7 @@ async def extract_transcript(
 
     if video_path and video_path.exists():
         logger.info("No captions for %s, falling back to whisper", video_id)
-        return await _transcribe_whisper(video_path, work_dir, whisper_model=whisper_model)
+        return await _transcribe_whisper(video_path, work_dir, whisper_model=whisper_model, job_id=job_id)
 
     raise RuntimeError(f"No captions and no video file for {video_id}")
 
@@ -197,10 +198,10 @@ def load_whisper_model():
     return model
 
 
-async def _transcribe_whisper(video_path: Path, work_dir: Path, whisper_model=None) -> TranscriptResult:
+async def _transcribe_whisper(video_path: Path, work_dir: Path, whisper_model=None, job_id: str | None = None) -> TranscriptResult:
     """Transcribe audio using faster-whisper. Tries GPU first, falls back to CPU."""
     audio_path = work_dir / "audio.wav"
-    await _extract_audio(video_path, audio_path)
+    await _extract_audio(video_path, audio_path, job_id=job_id)
 
     def _transcribe():
         from faster_whisper import WhisperModel
@@ -217,6 +218,9 @@ async def _transcribe_whisper(video_path: Path, work_dir: Path, whisper_model=No
             )
             segments = []
             for seg in result_segments:
+                if job_id and is_cancelled(job_id):
+                    logger.info("[%s] Whisper transcription interrupted by job cancel", job_id)
+                    break
                 segments.append(Segment(
                     start=seg.start,
                     end=seg.end,
@@ -248,6 +252,9 @@ async def _transcribe_whisper(video_path: Path, work_dir: Path, whisper_model=No
                 )
                 segments = []
                 for seg in result_segments:
+                    if job_id and is_cancelled(job_id):
+                        logger.info("[%s] Whisper transcription interrupted by job cancel", job_id)
+                        break
                     segments.append(Segment(
                         start=seg.start,
                         end=seg.end,
@@ -272,7 +279,7 @@ async def _transcribe_whisper(video_path: Path, work_dir: Path, whisper_model=No
     return TranscriptResult(text=full_text, segments=segments, source="whisper", language=language)
 
 
-async def _extract_audio(video_path: Path, audio_path: Path):
+async def _extract_audio(video_path: Path, audio_path: Path, job_id: str | None = None):
     """Extract audio from video using ffmpeg."""
     proc = await asyncio.create_subprocess_exec(
         "ffmpeg", "-i", str(video_path),
@@ -281,6 +288,12 @@ async def _extract_audio(video_path: Path, audio_path: Path):
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.PIPE,
     )
-    _, stderr = await proc.communicate()
+    if job_id:
+        await register_subprocess(job_id, proc)
+    try:
+        _, stderr = await proc.communicate()
+    finally:
+        if job_id:
+            await unregister_subprocess(job_id, proc)
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg audio extraction failed: {stderr.decode()}")
