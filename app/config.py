@@ -47,3 +47,6 @@ UNIFORM_INTERVAL_SECONDS = 60
 CODEX_SCHEMA_PATH = DATA_DIR / "codex_output_schema.json"
 CODEX_MAX_IMAGE_FRAMES = 50   # Hard cap per call; keep latest N by timestamp
 LITELLM_MAX_IMAGE_FRAMES = 20  # Base64 payload budget; keep evenly-spaced N
+
+# Artifact reuse: keep tmp dirs for at most this many most-recent failed/cancelled jobs
+MAX_REUSABLE_FAILED_JOBS = 5

@@ -1,9 +1,11 @@
 import logging
+import shutil
 import uuid
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from app.config import TMP_DIR
 from app.database import get_db
 from app.queue.worker import cancel, enqueue
 from app.services.ytdlp import get_video_info
@@ -116,6 +118,9 @@ async def delete_jobs(req: DeleteRequest):
     finally:
         await db.close()
 
+    for job_id in req.job_ids:
+        shutil.rmtree(TMP_DIR / job_id, ignore_errors=True)
+
     logger.info("Bulk deleted %d jobs (requested %d)", deleted, len(req.job_ids))
     return {"deleted": deleted}
 
@@ -125,6 +130,13 @@ async def clear_finished():
     """Delete all finished jobs (done, failed, cancelled)."""
     db = await get_db()
     try:
+        # Fetch IDs first so we can clean up tmp dirs after deletion
+        cursor = await db.execute(
+            "SELECT id FROM jobs WHERE status IN ('done', 'failed', 'cancelled')"
+        )
+        rows = await cursor.fetchall()
+        finished_ids = [row["id"] for row in rows]
+
         cursor = await db.execute(
             "DELETE FROM jobs WHERE status IN ('done', 'failed', 'cancelled')"
         )
@@ -132,6 +144,9 @@ async def clear_finished():
         deleted = cursor.rowcount
     finally:
         await db.close()
+
+    for job_id in finished_ids:
+        shutil.rmtree(TMP_DIR / job_id, ignore_errors=True)
 
     logger.info("Cleared %d finished jobs", deleted)
     return {"deleted": deleted}
