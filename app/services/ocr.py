@@ -8,6 +8,7 @@ from pathlib import Path
 import torch
 from PIL import Image
 
+from app.cancel import is_cancelled
 from app.config import OCR_MODEL_DIR, OCR_MODEL_NAME, OCR_PROMPT_TYPE
 from app.services.keyframes import KeyFrame
 from app.shutdown import is_shutting_down
@@ -68,7 +69,7 @@ def load_model():
     return _load_model()
 
 
-def _run_ocr(keyframes: list[KeyFrame], model_tuple=None, on_progress: Callable[[int, int], None] | None = None) -> list[OcrResult]:
+def _run_ocr(keyframes: list[KeyFrame], model_tuple=None, on_progress: Callable[[int, int], None] | None = None, job_id: str | None = None) -> list[OcrResult]:
     """Load model, run OCR on all keyframes, release model."""
     from chandra.model.hf import generate_hf
     from chandra.model.schema import BatchInputItem
@@ -85,6 +86,9 @@ def _run_ocr(keyframes: list[KeyFrame], model_tuple=None, on_progress: Callable[
         for kf in keyframes:
             if is_shutting_down():
                 logger.info("OCR interrupted by shutdown")
+                break
+            if job_id and is_cancelled(job_id):
+                logger.info("[%s] OCR interrupted by job cancel", job_id)
                 break
             try:
                 img = Image.open(kf.image_path)
@@ -143,13 +147,13 @@ def save_ocr_results(ocr_results: list[OcrResult], work_dir: Path) -> list[Path 
     return paths
 
 
-async def extract_text(keyframes: list[KeyFrame], model_tuple=None, on_progress: Callable[[int, int], None] | None = None) -> list[OcrResult]:
+async def extract_text(keyframes: list[KeyFrame], model_tuple=None, on_progress: Callable[[int, int], None] | None = None, job_id: str | None = None) -> list[OcrResult]:
     """Run OCR on keyframe images using chandra-ocr-2."""
     if not keyframes:
         return []
 
     logger.info("Running OCR on %d keyframes", len(keyframes))
-    results = await asyncio.to_thread(_run_ocr, keyframes, model_tuple, on_progress)
+    results = await asyncio.to_thread(_run_ocr, keyframes, model_tuple, on_progress, job_id)
     ocr_count = sum(1 for r in results if r.text)
     logger.info("OCR complete: %d/%d keyframes had text", ocr_count, len(results))
     return results
