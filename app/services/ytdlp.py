@@ -4,6 +4,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+from app.cancel import is_cancelled
 from app.config import COOKIES_PATH, VIDEO_FORMAT
 
 # yt-dlp modifies cookiefile in place (writes back rotated cookies from YouTube).
@@ -47,14 +48,21 @@ def _base_opts() -> dict:
     return opts
 
 
-async def download_video(video_id: str, output_dir: Path) -> Path:
+async def download_video(video_id: str, output_dir: Path, job_id: str | None = None) -> Path:
     """Download a video at 720p max. Returns path to the downloaded file."""
     output_template = str(output_dir / "%(id)s.%(ext)s")
+
+    def _progress_hook(d):
+        if job_id and is_cancelled(job_id):
+            import yt_dlp
+            raise yt_dlp.utils.DownloadCancelled("Job cancelled")
+
     opts = {
         **_base_opts(),
         "format": VIDEO_FORMAT,
         "merge_output_format": "mp4",
         "outtmpl": output_template,
+        "progress_hooks": [_progress_hook],
     }
 
     def _download():

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PIL import Image
 
+from app.cancel import register_subprocess, unregister_subprocess
 from app.config import (
     KEYFRAME_MAX_DIMENSION,
     MAX_KEYFRAMES,
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 _nvidia_hwaccel: bool | None = None
 
 
-async def _check_nvidia_hwaccel() -> bool:
+async def _check_nvidia_hwaccel(job_id: str | None = None) -> bool:
     """Check if ffmpeg NVIDIA CUDA hwaccel is available (cached)."""
     global _nvidia_hwaccel
     if _nvidia_hwaccel is not None:
@@ -28,13 +29,19 @@ async def _check_nvidia_hwaccel() -> bool:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
     )
-    stdout, _ = await proc.communicate()
+    if job_id:
+        await register_subprocess(job_id, proc)
+    try:
+        stdout, _ = await proc.communicate()
+    finally:
+        if job_id:
+            await unregister_subprocess(job_id, proc)
     _nvidia_hwaccel = "cuda" in stdout.decode()
     logger.info("NVIDIA hwaccel available: %s", _nvidia_hwaccel)
     return _nvidia_hwaccel
 
 
-async def _ffmpeg_exec(*args: str, use_gpu: bool = False) -> tuple[int, bytes]:
+async def _ffmpeg_exec(*args: str, use_gpu: bool = False, job_id: str | None = None) -> tuple[int, bytes]:
     """Run ffmpeg with optional CUDA hardware-accelerated decoding."""
     cmd = ["ffmpeg"]
     if use_gpu:
@@ -45,7 +52,13 @@ async def _ffmpeg_exec(*args: str, use_gpu: bool = False) -> tuple[int, bytes]:
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.PIPE,
     )
-    _, stderr = await proc.communicate()
+    if job_id:
+        await register_subprocess(job_id, proc)
+    try:
+        _, stderr = await proc.communicate()
+    finally:
+        if job_id:
+            await unregister_subprocess(job_id, proc)
     return proc.returncode, stderr
 
 
@@ -55,16 +68,16 @@ class KeyFrame:
     image_path: Path
 
 
-async def extract_keyframes(video_path: Path, work_dir: Path) -> list[KeyFrame]:
+async def extract_keyframes(video_path: Path, work_dir: Path, job_id: str | None = None) -> list[KeyFrame]:
     """Extract keyframes via scene detection, with uniform interval fallback."""
     frames_dir = work_dir / "frames"
     frames_dir.mkdir(exist_ok=True)
 
-    keyframes = await _scene_detect(video_path, frames_dir)
+    keyframes = await _scene_detect(video_path, frames_dir, job_id=job_id)
 
     if len(keyframes) < 3:
         logger.info("Scene detection yielded %d frames, falling back to uniform interval", len(keyframes))
-        keyframes = await _uniform_sample(video_path, frames_dir)
+        keyframes = await _uniform_sample(video_path, frames_dir, job_id=job_id)
 
     if len(keyframes) > MAX_KEYFRAMES:
         keyframes = _subsample(keyframes, MAX_KEYFRAMES)
@@ -218,9 +231,9 @@ def _dedup_by_phash(keyframes: list[KeyFrame], threshold: int = 5) -> list[KeyFr
     return keep
 
 
-async def _scene_detect(video_path: Path, frames_dir: Path) -> list[KeyFrame]:
+async def _scene_detect(video_path: Path, frames_dir: Path, job_id: str | None = None) -> list[KeyFrame]:
     """Extract keyframes using ffmpeg scene change detection (GPU-accelerated decode when available)."""
-    use_gpu = await _check_nvidia_hwaccel()
+    use_gpu = await _check_nvidia_hwaccel(job_id=job_id)
     ffmpeg_args = (
         "-i", str(video_path),
         "-vf", f"select='gt(scene,{SCENE_CHANGE_THRESHOLD})',showinfo",
@@ -229,13 +242,13 @@ async def _scene_detect(video_path: Path, frames_dir: Path) -> list[KeyFrame]:
         "-y",
     )
 
-    returncode, stderr = await _ffmpeg_exec(*ffmpeg_args, use_gpu=use_gpu)
+    returncode, stderr = await _ffmpeg_exec(*ffmpeg_args, use_gpu=use_gpu, job_id=job_id)
 
     if returncode != 0 and use_gpu:
         logger.warning("GPU-accelerated scene detection failed, falling back to CPU")
         for f in frames_dir.glob("scene_*.png"):
             f.unlink()
-        returncode, stderr = await _ffmpeg_exec(*ffmpeg_args, use_gpu=False)
+        returncode, stderr = await _ffmpeg_exec(*ffmpeg_args, use_gpu=False, job_id=job_id)
 
     if returncode != 0:
         logger.warning("ffmpeg scene detection failed: %s", stderr.decode()[-500:])
@@ -260,7 +273,7 @@ def _parse_showinfo_timestamps(stderr: str) -> list[float]:
     return timestamps
 
 
-async def _get_duration(video_path: Path) -> float:
+async def _get_duration(video_path: Path, job_id: str | None = None) -> float:
     """Get video duration in seconds via ffprobe."""
     proc = await asyncio.create_subprocess_exec(
         "ffprobe", "-v", "error",
@@ -270,18 +283,24 @@ async def _get_duration(video_path: Path) -> float:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
     )
-    stdout, _ = await proc.communicate()
+    if job_id:
+        await register_subprocess(job_id, proc)
+    try:
+        stdout, _ = await proc.communicate()
+    finally:
+        if job_id:
+            await unregister_subprocess(job_id, proc)
     return float(stdout.decode().strip())
 
 
-async def _uniform_sample(video_path: Path, frames_dir: Path) -> list[KeyFrame]:
+async def _uniform_sample(video_path: Path, frames_dir: Path, job_id: str | None = None) -> list[KeyFrame]:
     """Extract frames at uniform intervals using ffmpeg (GPU-accelerated decode when available)."""
     # Clean any scene detection frames
     for f in frames_dir.glob("scene_*.png"):
         f.unlink()
 
-    use_gpu = await _check_nvidia_hwaccel()
-    duration = await _get_duration(video_path)
+    use_gpu = await _check_nvidia_hwaccel(job_id=job_id)
+    duration = await _get_duration(video_path, job_id=job_id)
     interval = min(UNIFORM_INTERVAL_SECONDS, max(duration / MAX_KEYFRAMES, 1))
     rate = 1 / interval
     logger.info("Uniform sampling: duration=%.1fs interval=%.1fs", duration, interval)
@@ -294,13 +313,13 @@ async def _uniform_sample(video_path: Path, frames_dir: Path) -> list[KeyFrame]:
         "-y",
     )
 
-    returncode, stderr = await _ffmpeg_exec(*ffmpeg_args, use_gpu=use_gpu)
+    returncode, stderr = await _ffmpeg_exec(*ffmpeg_args, use_gpu=use_gpu, job_id=job_id)
 
     if returncode != 0 and use_gpu:
         logger.warning("GPU-accelerated uniform sampling failed, falling back to CPU")
         for f in frames_dir.glob("uniform_*.png"):
             f.unlink()
-        returncode, stderr = await _ffmpeg_exec(*ffmpeg_args, use_gpu=False)
+        returncode, stderr = await _ffmpeg_exec(*ffmpeg_args, use_gpu=False, job_id=job_id)
 
     if returncode != 0:
         logger.warning("ffmpeg uniform sampling failed: %s", stderr.decode()[-500:])
