@@ -80,6 +80,8 @@ async def process_job(job_id: str) -> None:
     work_dir.mkdir(exist_ok=True)
 
     llm_settings = _get_llm_settings()
+    _active_provider = llm_settings.get("active_provider", "claude")
+    _provider_cfg = llm_settings.get("providers", {}).get(_active_provider, {})
 
     transcript = None
     keyframes: list[KeyFrame] = []
@@ -197,9 +199,9 @@ async def process_job(job_id: str) -> None:
             }
 
             # Per-job custom_prompt overrides global setting
-            effective_prompt = job["custom_prompt"] if job["custom_prompt"] else llm_settings["custom_prompt"]
-            effective_mode = job["custom_prompt_mode"] or "replace"
-            effective_language = job["output_language"] or llm_settings.get("output_language") or transcript.language
+            effective_prompt = job["custom_prompt"] if job["custom_prompt"] else _provider_cfg.get("custom_prompt")
+            effective_mode = job["custom_prompt_mode"] or _provider_cfg.get("custom_prompt_mode") or "replace"
+            effective_language = job["output_language"] or _provider_cfg.get("output_language") or transcript.language
 
             result = await summarize(
                 transcript=transcript,
@@ -207,7 +209,7 @@ async def process_job(job_id: str) -> None:
                 video_meta=video_meta,
                 custom_prompt=effective_prompt,
                 custom_prompt_mode=effective_mode,
-                model=llm_settings["model"],
+                model=_provider_cfg.get("model") or "claude-sonnet-4-20250514",
                 keyframe_mode=KeyframeMode(keyframe_mode_str),
                 ocr_paths=ocr_paths,
                 ocr_results=ocr_results,
@@ -302,6 +304,8 @@ async def process_batch(job_ids: list[str]) -> None:
         return
 
     llm_settings = _get_llm_settings()
+    _active_provider = llm_settings.get("active_provider", "claude")
+    _provider_cfg = llm_settings.get("providers", {}).get(_active_provider, {})
 
     # Step 1: Download all
     for bj in _active(batch):
@@ -418,9 +422,9 @@ async def process_batch(job_ids: list[str]) -> None:
             }
 
             # Per-job custom_prompt overrides global setting
-            effective_prompt = job["custom_prompt"] if job["custom_prompt"] else llm_settings["custom_prompt"]
-            effective_mode = job["custom_prompt_mode"] or "replace"
-            effective_language = job["output_language"] or llm_settings.get("output_language") or transcript.language
+            effective_prompt = job["custom_prompt"] if job["custom_prompt"] else _provider_cfg.get("custom_prompt")
+            effective_mode = job["custom_prompt_mode"] or _provider_cfg.get("custom_prompt_mode") or "replace"
+            effective_language = job["output_language"] or _provider_cfg.get("output_language") or transcript.language
 
             result = await summarize(
                 transcript=transcript,
@@ -428,7 +432,7 @@ async def process_batch(job_ids: list[str]) -> None:
                 video_meta=video_meta,
                 custom_prompt=effective_prompt,
                 custom_prompt_mode=effective_mode,
-                model=llm_settings["model"],
+                model=_provider_cfg.get("model") or "claude-sonnet-4-20250514",
                 keyframe_mode=KeyframeMode(bj.keyframe_mode_str),
                 ocr_paths=bj.ocr_paths,
                 ocr_results=bj.ocr_results,
