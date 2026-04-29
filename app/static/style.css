@@ -326,3 +326,30 @@ h2[aria-busy="true"]::before { margin-left: 0.5rem; }
   color: #7b8495;
   font-size: 0.875rem;
 }
+
+/* Video title links: inherit color/weight, no underline by default */
+.video-title-link {
+  color: inherit;
+  text-decoration: none;
+  font-weight: inherit;
+}
+.video-title-link:hover {
+  text-decoration: underline;
+}
+
+/* Queue tab: OCR sub-progress fill bar */
+.progress-segment-ocr {
+  position: relative;
+  overflow: hidden;
+  /* Keep animation from parent active class — override with fill bar */
+  animation: none;
+  background: rgba(1, 170, 255, 0.25);
+}
+.progress-segment-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: #01aaff;
+  transition: width 0.4s ease;
+}

@@ -786,12 +786,12 @@ function getProgressSegments(job) {
   let label = 'Waiting...';
 
   if (job.status === 'pending') {
-    return { segments, label };
+    return { segments, label, ocrFill: null };
   }
 
   if (job.status === 'done') {
     segments.fill('completed');
-    return { segments, label: 'Complete' };
+    return { segments, label: 'Complete', ocrFill: null };
   }
 
   const stepInfo = STEP_MAP[job.current_step];
@@ -801,7 +801,7 @@ function getProgressSegments(job) {
     for (let i = 0; i < activeIndex && i < TOTAL_SEGMENTS; i++) {
       segments[i] = 'completed';
     }
-    return { segments, label: 'Cancelled' };
+    return { segments, label: 'Cancelled', ocrFill: null };
   }
 
   if (job.status === 'failed') {
@@ -812,7 +812,7 @@ function getProgressSegments(job) {
       segments[activeIndex] = 'failed';
     }
     const stepName = stepInfo ? stepInfo.label.replace('...', '') : job.current_step;
-    return { segments, label: `Failed at ${stepName}` };
+    return { segments, label: `Failed at ${stepName}`, ocrFill: null };
   }
 
   if (job.status === 'processing') {
@@ -823,10 +823,16 @@ function getProgressSegments(job) {
       segments[activeIndex] = 'active';
     }
     label = stepInfo ? stepInfo.label : 'Processing...';
-    return { segments, label };
+    if (job.current_step === 'ocr' && job.step_total > 0) {
+      label += ` — ${job.step_progress ?? 0}/${job.step_total} frames`;
+    }
+    const ocrFill = (job.current_step === 'ocr' && job.step_total > 0)
+      ? (job.step_progress ?? 0) / job.step_total
+      : null;
+    return { segments, label, ocrFill };
   }
 
-  return { segments, label };
+  return { segments, label, ocrFill: null };
 }
 
 // Badge text and CSS class mapping: badge-pending, badge-processing, badge-done, badge-failed, badge-cancelled
@@ -843,10 +849,17 @@ function renderJobCard(job) {
   article.className = 'job-card' + ((job.status === 'cancelled' || job.status === 'failed') ? ' dimmed' : '');
   article.dataset.jobId = job.id;
 
-  const { segments, label } = getProgressSegments(job);
+  const { segments, label, ocrFill } = getProgressSegments(job);
   const badgeText = BADGE_TEXT[job.status] || job.status.toUpperCase();
 
-  const segmentsHtml = segments.map(s => `<div class="progress-segment ${s}"></div>`).join('');
+  const OCR_SEGMENT_INDEX = 3;
+  const segmentsHtml = segments.map((s, i) => {
+    if (i === OCR_SEGMENT_INDEX && s === 'active' && ocrFill !== null) {
+      const pct = Math.round(ocrFill * 100);
+      return `<div class="progress-segment active progress-segment-ocr"><div class="progress-segment-fill" style="width:${pct}%"></div></div>`;
+    }
+    return `<div class="progress-segment ${s}"></div>`;
+  }).join('');
 
   let errorHtml = '';
   if (job.status === 'failed' && job.error) {
@@ -878,7 +891,7 @@ function renderJobCard(job) {
     <img src="${job.thumbnail_url || ''}" alt="" loading="lazy">
     <div class="job-card-content">
       <div class="job-card-header">
-        <strong>${job.title || 'Untitled'}</strong>
+        <strong><a class="video-title-link" href="https://www.youtube.com/watch?v=${job.video_id}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${job.title || 'Untitled'}</a></strong>
         <small class="created-time">${formatCreatedTime(job.created_at)}</small>
       </div>
       <small style="color:#7b8495">${job.channel || 'Unknown'} / ${formatDuration(job.duration)}${job.language ? ' / ' + (job.output_language && job.output_language !== job.language ? job.language + ' → ' + job.output_language : job.language) : (job.output_language ? ' / → ' + job.output_language : '')} / ${job.dedup_mode} / ${job.keyframe_mode}</small>
@@ -1251,7 +1264,7 @@ function renderSummaryCard(summary) {
       <div class="summary-card" data-job-id="${summary.job_id}">
         <input type="checkbox" class="summary-check" data-job-id="${summary.job_id}" ${checked} aria-label="Select summary">
         <div class="summary-card-content" style="flex-direction:row;align-items:center;gap:1rem">
-          <strong style="flex:1;min-width:0">${summary.title || 'Untitled'}</strong>
+          <strong style="flex:1;min-width:0"><a class="video-title-link" href="https://www.youtube.com/watch?v=${summary.video_id}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${summary.title || 'Untitled'}</a></strong>
           <small style="color:#7b8495;white-space:nowrap">${summary.channel || 'Unknown'} / ${formatCreatedTime(summary.created_at)}</small>
           <div class="summary-actions" style="margin-top:0">
             <button class="outline summary-btn summary-copy-btn" data-job-id="${summary.job_id}">Copy</button>
@@ -1269,7 +1282,7 @@ function renderSummaryCard(summary) {
       <input type="checkbox" class="summary-check" data-job-id="${summary.job_id}" ${checked} aria-label="Select summary">
       <img src="${summary.thumbnail_url || ''}" alt="" loading="lazy">
       <div class="summary-card-content">
-        <strong>${summary.title || 'Untitled'}</strong>
+        <strong><a class="video-title-link" href="https://www.youtube.com/watch?v=${summary.video_id}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${summary.title || 'Untitled'}</a></strong>
         <small style="color:#7b8495">${summary.channel || 'Unknown'} / ${formatDuration(summary.duration)} / ${formatCreatedTime(summary.created_at)}</small>
         <div class="summary-tldr">${tldr}</div>
         <div class="summary-actions">
