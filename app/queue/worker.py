@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+from app.cancel import clear_cancelled, is_cancelled, kill_subprocesses, mark_cancelled
 from app.database import get_db
 from app.settings import get_worker_settings as _get_worker_settings
 
@@ -8,7 +9,6 @@ logger = logging.getLogger(__name__)
 
 _queue: asyncio.Queue[str] = asyncio.Queue()
 _worker_task: asyncio.Task | None = None
-_cancelled: set[str] = set()
 
 
 async def get_worker_settings() -> dict:
@@ -24,10 +24,10 @@ async def _drain_queue(batch_size: int) -> list[str]:
 
     # Block on first item
     job_id = await _queue.get()
-    if job_id not in _cancelled:
+    if not is_cancelled(job_id):
         job_ids.append(job_id)
     else:
-        _cancelled.discard(job_id)
+        clear_cancelled(job_id)
         logger.info("Skipping cancelled job %s", job_id)
     _queue.task_done()
 
@@ -35,10 +35,10 @@ async def _drain_queue(batch_size: int) -> list[str]:
     while len(job_ids) < batch_size and not _queue.empty():
         try:
             job_id = _queue.get_nowait()
-            if job_id not in _cancelled:
+            if not is_cancelled(job_id):
                 job_ids.append(job_id)
             else:
-                _cancelled.discard(job_id)
+                clear_cancelled(job_id)
                 logger.info("Skipping cancelled job %s", job_id)
             _queue.task_done()
         except asyncio.QueueEmpty:
@@ -87,8 +87,8 @@ async def enqueue(job_id: str):
 
 
 async def cancel(job_id: str) -> bool:
-    """Mark a job for cancellation."""
-    _cancelled.add(job_id)
+    """Mark a job for cancellation and kill any running subprocesses."""
+    mark_cancelled(job_id)
     # Update DB status
     db = await get_db()
     try:
@@ -102,12 +102,8 @@ async def cancel(job_id: str) -> bool:
         await db.close()
     if changed:
         logger.info("Cancelled job %s", job_id)
+    await kill_subprocesses(job_id)
     return changed
-
-
-def is_cancelled(job_id: str) -> bool:
-    """Check if a job has been cancelled."""
-    return job_id in _cancelled
 
 
 async def _worker_loop():
@@ -126,8 +122,8 @@ async def _worker_loop():
             else:
                 job_id = await _queue.get()
                 try:
-                    if job_id in _cancelled:
-                        _cancelled.discard(job_id)
+                    if is_cancelled(job_id):
+                        clear_cancelled(job_id)
                         logger.info("Skipping cancelled job %s", job_id)
                         continue
 
