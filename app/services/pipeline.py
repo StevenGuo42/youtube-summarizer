@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import shutil
@@ -426,16 +427,24 @@ async def process_job(job_id: str) -> None:
                     manifest["completed"].pop("ocr", None)
             if "ocr" not in manifest["completed"]:
                 try:
-                    ocr_results = await extract_text(keyframes)
+                    loop = asyncio.get_running_loop()
+                    await _update_job(job_id, step_progress=0, step_total=len(keyframes))
+
+                    def _ocr_progress(done: int, total: int) -> None:
+                        asyncio.run_coroutine_threadsafe(_update_job(job_id, step_progress=done), loop)
+
+                    ocr_results = await extract_text(keyframes, on_progress=_ocr_progress)
                     ocr_paths = save_ocr_results(ocr_results, work_dir)
                     logger.info("[%s] OCR: %d results", job_id, len(ocr_results))
                     rel = _save_step_ocr(work_dir, ocr_results, "ocr_results.json")
                     manifest["completed"]["ocr"] = {"ocr_results_path": rel}
                     _save_manifest(work_dir, manifest)
+                    await _update_job(job_id, step_progress=None, step_total=None)
                 except Exception:
                     logger.exception("[%s] OCR failed", job_id)
                     _purge_step_artifacts(work_dir, "ocr")
                     await _add_warning(job_id, "OCR failed, falling back to image-only mode")
+                    await _update_job(job_id, step_progress=None, step_total=None)
                     keyframe_mode_str = "image"
                     needs_ocr = False
 
@@ -513,16 +522,24 @@ async def process_job(job_id: str) -> None:
                         manifest["completed"].pop("ocr", None)
                 if "ocr" not in manifest["completed"]:
                     try:
-                        ocr_results = await extract_text(keyframes)
+                        loop = asyncio.get_running_loop()
+                        await _update_job(job_id, step_progress=0, step_total=len(keyframes))
+
+                        def _ocr_progress(done: int, total: int) -> None:
+                            asyncio.run_coroutine_threadsafe(_update_job(job_id, step_progress=done), loop)
+
+                        ocr_results = await extract_text(keyframes, on_progress=_ocr_progress)
                         ocr_paths = save_ocr_results(ocr_results, work_dir)
                         logger.info("[%s] OCR: %d results", job_id, len(ocr_results))
                         rel = _save_step_ocr(work_dir, ocr_results, "ocr_results.json")
                         manifest["completed"]["ocr"] = {"ocr_results_path": rel}
                         _save_manifest(work_dir, manifest)
+                        await _update_job(job_id, step_progress=None, step_total=None)
                     except Exception:
                         logger.exception("[%s] OCR failed", job_id)
                         _purge_step_artifacts(work_dir, "ocr")
                         await _add_warning(job_id, "OCR failed, falling back to image-only mode")
+                        await _update_job(job_id, step_progress=None, step_total=None)
                         keyframe_mode_str = "image"
 
         if is_cancelled(job_id):
@@ -820,15 +837,23 @@ async def process_batch(job_ids: list[str]) -> None:
                     bj.manifest["completed"].pop("ocr", None)
             if "ocr" not in bj.manifest["completed"]:
                 try:
-                    bj.ocr_results = await extract_text(bj.keyframes)
+                    loop = asyncio.get_running_loop()
+                    await _update_job(bj.job_id, step_progress=0, step_total=len(bj.keyframes))
+
+                    def _ocr_progress(done: int, total: int, _jid=bj.job_id) -> None:
+                        asyncio.run_coroutine_threadsafe(_update_job(_jid, step_progress=done), loop)
+
+                    bj.ocr_results = await extract_text(bj.keyframes, on_progress=_ocr_progress)
                     bj.ocr_paths = save_ocr_results(bj.ocr_results, bj.work_dir)
                     rel = _save_step_ocr(bj.work_dir, bj.ocr_results, "ocr_results.json")
                     bj.manifest["completed"]["ocr"] = {"ocr_results_path": rel}
                     _save_manifest(bj.work_dir, bj.manifest)
+                    await _update_job(bj.job_id, step_progress=None, step_total=None)
                 except Exception:
                     logger.exception("[%s] OCR failed", bj.job_id)
                     _purge_step_artifacts(bj.work_dir, "ocr")
                     await _add_warning(bj.job_id, "OCR failed, falling back to image-only mode")
+                    await _update_job(bj.job_id, step_progress=None, step_total=None)
                     bj.keyframe_mode_str = "image"
 
         for bj in ocr_first:
@@ -911,15 +936,23 @@ async def process_batch(job_ids: list[str]) -> None:
                     bj.manifest["completed"].pop("ocr", None)
             if "ocr" not in bj.manifest["completed"]:
                 try:
-                    bj.ocr_results = await extract_text(bj.keyframes)
+                    loop = asyncio.get_running_loop()
+                    await _update_job(bj.job_id, step_progress=0, step_total=len(bj.keyframes))
+
+                    def _ocr_progress(done: int, total: int, _jid=bj.job_id) -> None:
+                        asyncio.run_coroutine_threadsafe(_update_job(_jid, step_progress=done), loop)
+
+                    bj.ocr_results = await extract_text(bj.keyframes, on_progress=_ocr_progress)
                     bj.ocr_paths = save_ocr_results(bj.ocr_results, bj.work_dir)
                     rel = _save_step_ocr(bj.work_dir, bj.ocr_results, "ocr_results.json")
                     bj.manifest["completed"]["ocr"] = {"ocr_results_path": rel}
                     _save_manifest(bj.work_dir, bj.manifest)
+                    await _update_job(bj.job_id, step_progress=None, step_total=None)
                 except Exception:
                     logger.exception("[%s] OCR failed", bj.job_id)
                     _purge_step_artifacts(bj.work_dir, "ocr")
                     await _add_warning(bj.job_id, "OCR failed, falling back to image-only mode")
+                    await _update_job(bj.job_id, step_progress=None, step_total=None)
                     bj.keyframe_mode_str = "image"
 
     for bj in _active(batch):

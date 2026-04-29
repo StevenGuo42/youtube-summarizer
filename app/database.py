@@ -79,4 +79,14 @@ async def init_db():
         except Exception:
             pass  # Column already exists
 
+        try:
+            await db.execute("ALTER TABLE jobs ADD COLUMN step_progress INTEGER DEFAULT NULL")
+        except Exception:
+            pass  # Column already exists
+
+        try:
+            await db.execute("ALTER TABLE jobs ADD COLUMN step_total INTEGER DEFAULT NULL")
+        except Exception:
+            pass  # Column already exists
+
         await db.commit()
