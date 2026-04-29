@@ -9,6 +9,13 @@ for _site_dir in site.getsitepackages():
         os.environ["LD_LIBRARY_PATH"] = f"{_cublas_lib}:{os.environ.get('LD_LIBRARY_PATH', '')}"
         break
 
+# nvidia/cu13/lib needed by bitsandbytes JIT compile (libnvrtc-builtins.so.13.0, libnvJitLink.so.13)
+for _site_dir in site.getsitepackages():
+    _cu13_lib = Path(_site_dir) / "nvidia" / "cu13" / "lib"
+    if _cu13_lib.is_dir() and str(_cu13_lib) not in os.environ.get("LD_LIBRARY_PATH", ""):
+        os.environ["LD_LIBRARY_PATH"] = f"{_cu13_lib}:{os.environ.get('LD_LIBRARY_PATH', '')}"
+        break
+
 # Ensure nvm-managed Node.js is on PATH (needed by yt-dlp EJS challenge solver)
 _nvm_dir = Path(os.environ.get("NVM_DIR", Path.home() / ".nvm"))
 _nvm_node_bins = sorted(_nvm_dir.glob("versions/node/*/bin"), reverse=True)
