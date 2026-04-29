@@ -7,6 +7,7 @@ from pathlib import Path
 
 from app.config import TMP_DIR
 from app.database import get_db
+from app.queue.worker import is_cancelled
 from app.services.keyframes import KeyFrame, extract_keyframes, deduplicate_keyframes
 from app.services.llm import summarize, KeyframeMode
 from app.settings import get_llm_settings
@@ -99,6 +100,11 @@ async def process_job(job_id: str) -> None:
             logger.exception("[%s] Download failed", job_id)
             await _add_warning(job_id, "Download failed, attempting transcript via captions")
 
+        if is_cancelled(job_id):
+            logger.info("[%s] Cancelled after download", job_id)
+            _cleanup(work_dir)
+            return
+
         # Step 2: Transcript
         await _update_job(job_id, current_step="transcribing")
         try:
@@ -109,6 +115,11 @@ async def process_job(job_id: str) -> None:
         except Exception:
             logger.exception("[%s] Transcript extraction failed", job_id)
             await _add_warning(job_id, "Transcript extraction failed, using keyframes only")
+
+        if is_cancelled(job_id):
+            logger.info("[%s] Cancelled after transcript", job_id)
+            _cleanup(work_dir)
+            return
 
         # Step 3: Keyframes
         await _update_job(job_id, current_step="extracting_keyframes")
@@ -128,6 +139,11 @@ async def process_job(job_id: str) -> None:
         # Check if we have anything to summarize
         if not transcript and not keyframes:
             await _update_job(job_id, status="failed", error="Both transcript and keyframe extraction failed")
+            return
+
+        if is_cancelled(job_id):
+            logger.info("[%s] Cancelled before dedup/OCR", job_id)
+            _cleanup(work_dir)
             return
 
         # Determine if OCR is needed
@@ -185,6 +201,11 @@ async def process_job(job_id: str) -> None:
                     logger.exception("[%s] OCR failed", job_id)
                     await _add_warning(job_id, "OCR failed, falling back to image-only mode")
                     keyframe_mode_str = "image"
+
+        if is_cancelled(job_id):
+            logger.info("[%s] Cancelled before summarizing", job_id)
+            _cleanup(work_dir)
+            return
 
         # Step 6: Summarize
         await _update_job(job_id, current_step="summarizing")
@@ -244,8 +265,11 @@ async def process_job(job_id: str) -> None:
         await _update_job(job_id, current_step="cleanup")
         _cleanup(work_dir)
 
-        await _update_job(job_id, status="done", current_step=None)
-        logger.info("[%s] Pipeline complete", job_id)
+        if not is_cancelled(job_id):
+            await _update_job(job_id, status="done", current_step=None)
+            logger.info("[%s] Pipeline complete", job_id)
+        else:
+            logger.info("[%s] Job was cancelled, skipping done status", job_id)
 
     except Exception:
         logger.exception("[%s] Pipeline failed unexpectedly", job_id)
@@ -317,6 +341,12 @@ async def process_batch(job_ids: list[str]) -> None:
             logger.exception("[%s] Download failed", bj.job_id)
             await _add_warning(bj.job_id, "Download failed, attempting transcript via captions")
 
+    for bj in _active(batch):
+        if is_cancelled(bj.job_id):
+            logger.info("[%s] Cancelled after download", bj.job_id)
+            _cleanup(bj.work_dir)
+            bj.failed = True
+
     # Step 2: Transcribe all
     for bj in _active(batch):
         await _update_job(bj.job_id, current_step="transcribing")
@@ -328,6 +358,12 @@ async def process_batch(job_ids: list[str]) -> None:
         except Exception:
             logger.exception("[%s] Transcript extraction failed", bj.job_id)
             await _add_warning(bj.job_id, "Transcript extraction failed, using keyframes only")
+
+    for bj in _active(batch):
+        if is_cancelled(bj.job_id):
+            logger.info("[%s] Cancelled after transcript", bj.job_id)
+            _cleanup(bj.work_dir)
+            bj.failed = True
 
     # Step 3: Extract keyframes all
     for bj in _active(batch):
@@ -343,6 +379,12 @@ async def process_batch(job_ids: list[str]) -> None:
         # Check if job has anything to work with
         if not bj.transcript and not bj.keyframes:
             await _update_job(bj.job_id, status="failed", error="Both transcript and keyframe extraction failed")
+            bj.failed = True
+
+    for bj in _active(batch):
+        if is_cancelled(bj.job_id):
+            logger.info("[%s] Cancelled before dedup/OCR", bj.job_id)
+            _cleanup(bj.work_dir)
             bj.failed = True
 
     # Step 4/5: Dedup and OCR
@@ -400,6 +442,12 @@ async def process_batch(job_ids: list[str]) -> None:
                 await _add_warning(bj.job_id, "OCR failed, falling back to image-only mode")
                 bj.keyframe_mode_str = "image"
 
+    for bj in _active(batch):
+        if is_cancelled(bj.job_id):
+            logger.info("[%s] Cancelled before summarizing", bj.job_id)
+            _cleanup(bj.work_dir)
+            bj.failed = True
+
     # Step 6: Summarize all
     for bj in _active(batch):
         await _update_job(bj.job_id, current_step="summarizing")
@@ -439,6 +487,11 @@ async def process_batch(job_ids: list[str]) -> None:
                 output_language=effective_language,
             )
 
+            if is_cancelled(bj.job_id):
+                logger.info("[%s] Cancelled after summarize response, skipping summary insert", bj.job_id)
+                bj.failed = True
+                continue
+
             summary_id = str(uuid.uuid4())
             structured = json.dumps({
                 "title": result.title,
@@ -467,9 +520,11 @@ async def process_batch(job_ids: list[str]) -> None:
         if not bj.failed:
             await _update_job(bj.job_id, current_step="cleanup")
         _cleanup(bj.work_dir)
-        if not bj.failed:
+        if not bj.failed and not is_cancelled(bj.job_id):
             await _update_job(bj.job_id, status="done", current_step=None)
             logger.info("[%s] Pipeline complete", bj.job_id)
+        elif not bj.failed:
+            logger.info("[%s] Job was cancelled, skipping done status", bj.job_id)
 
 
 def _cleanup(work_dir: Path):
